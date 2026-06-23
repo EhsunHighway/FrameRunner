@@ -1,0 +1,165 @@
+# Module 05 — Link
+
+**Files:** `src/network/link.c`, `src/network/link.h`
+**Status:** ✅ Implemented (89% / 80%)
+**Depends on:** interface, packet, scheduler (forward decl)
+
+---
+
+## The Problem
+
+Two interfaces sit on either end of a cable. The cable has finite
+**bandwidth** (serialization delay) and a **propagation delay** (speed
+of light over distance). Packets may be **dropped** randomly to model
+flaky media. The link must:
+
+1. Compute *when* a packet shows up on the far end.
+2. Clone the packet and schedule an `EVT_PACKET_RECEIVE` event with the
+   correct destination interface, timestamp, receive callback, and
+   receive context.
+3. Leave ownership of the caller's original packet with the caller.
+
+## Mental Model
+
+```
+   ┌──────────┐               1 Gbps                ┌──────────┐
+   │ Iface A  │ ◄────────── 1 ms latency ─────────► │ Iface B  │
+   └──────────┘               0.1% loss              └──────────┘
+
+   pkt of L bytes leaves A at time t:
+       tx_time = L * 8 / bandwidth_mbps   (serialization)
+       arrival = t + tx_time + delay_ms   (propagation)
+       schedule EVT_PACKET_RECEIVE at "arrival" with dst_iface = B
+       and the callback supplied by the caller
+```
+
+The current implementation clones the packet before scheduling. The
+event owns the clone; the caller still owns the original packet.
+
+---
+
+## Header File — `link.h`
+
+### Struct
+
+```c
+typedef struct Link {
+    Interface *end_a;          // one endpoint
+    Interface *end_b;          // other endpoint
+    uint32_t   bandwidth_mbps; // megabits per second
+    uint32_t   delay_ms;       // one-way propagation
+    float      loss_rate;      // 0.0 .. 1.0
+    int        up;             // 1=up, 0=down
+} Link;
+```
+
+### Public API
+
+| Function                        | Purpose                                  |
+|---------------------------------|------------------------------------------|
+| `link_create(a,b,bw,delay,loss)`| Wire two interfaces; returns the Link.   |
+| `link_free`                     | Release.                                 |
+| `link_set_up / is_up`           | Toggle cable.                            |
+| `link_get_other_interface(l,s)` | Given one end `s`, return the other.     |
+| `link_transmit(l,pkt,src,sched,now,rx,ctx)` | Schedule delivery.           |
+
+### Return codes for `link_transmit`
+
+| return | meaning                                         |
+|--------|-------------------------------------------------|
+| `1`    | Scheduled OK                                    |
+| `-1`   | Bad input or link down                          |
+
+`0` is not currently returned by `link_transmit`.
+
+---
+
+## Call Sequence — Sending a frame
+
+```
+ethernet_send(...)
+   │
+   └─► link_transmit(link, pkt, src_iface, sched, now,
+                     ethernet_receive_event, sim)
+           │
+           │   1. NULL checks; link->up?              ⇒ else -1
+           │   2. dst = link_get_other_interface(link, src_iface)
+           │   3. reject if dst is NULL or down
+           │   4. pkt_clone = packet_clone(pkt)
+           │   5. arrival = now + delay_ms
+           │   6. Event *e = event_create_callback(EVT_PACKET_RECEIVE,
+           │                                       arrival,
+           │                                       src_iface, dst,
+           │                                       pkt_clone, NULL,
+           │                                       rx_handler, rx_ctx)
+           │
+           └─► scheduler_schedule(sched, e)
+                   │
+                   └─► event_queue_push(sched->eq, e)
+```
+
+## Call Sequence — Delivery
+
+```
+[scheduler reaches "arrival"]
+   │
+   ▼
+scheduler_step pops the event
+   │   sched->now = arrival
+   │
+   ▼
+scheduler_step sees e->handler != NULL
+   │
+   ▼
+e->handler(e, e->handler_ctx)
+   │   = ethernet_receive_event
+   │
+   ├─► ethernet_receive(dst_iface, pkt, &ethertype)
+   │
+   └─► dst_iface->rx_handler(dst_iface, pkt, ethertype, ...)
+```
+
+---
+
+## Design Notes
+
+- **Symmetric link.** Same bandwidth/delay/loss in both directions.
+  Asymmetric scenarios use two unidirectional links (out of scope here).
+- **`link_get_other_interface` is the only safe way** to find the peer —
+  it returns NULL if `src` isn't either endpoint.
+- **`pkt` is cloned.** The link never frees the caller's packet. The
+  receive handler owns the clone carried by the scheduled event.
+- **The link does not know Ethernet.** The caller supplies
+  `rx_handler` and `rx_ctx`; the link stores them in the event. Ethernet
+  passes `ethernet_receive_event`, but another producer could pass a
+  different callback without changing `link.c`.
+- **`bandwidth_mbps` and `loss_rate` are stored but not yet used** in
+  the current `link_transmit` timing/loss calculation. Arrival is
+  `now + delay_ms`.
+- The receive event is **not generated by the peer NIC** — it is
+  generated *by the link*, on behalf of the peer. This is the cleanest
+  place to encode "the wire takes time".
+
+## Implementation Guide
+
+1. `link_create`: validate endpoints and, ideally, `bw > 0`; allocate
+   and store endpoints, bandwidth, delay, loss rate, and `up = 1`.
+2. `link_get_other_interface`: return the opposite endpoint only when
+   `src` is exactly `end_a` or `end_b`.
+3. `link_transmit`: reject NULL input, down link, unknown source, or down
+   destination; clone the packet; create an `EVT_PACKET_RECEIVE` event
+   for `now + delay_ms` using `event_create_callback`; store
+   `rx_handler` and `rx_ctx` in that event; schedule it; free the
+   clone/event on schedule failure; return `1` on schedule success.
+4. Future bandwidth/loss work should either update this spec and tests
+   or change return codes deliberately.
+
+## ACSL Contract Plan
+
+- `link_get_other_interface`: three behaviors: null, mismatch, valid
+  endpoint. The valid behavior returns exactly the opposite endpoint.
+- `link_transmit`: success implies scheduler queue count increased by
+  one, the queued packet is not the same pointer as the input packet,
+  and the queued event preserves the supplied callback/context.
+- Failure paths must not mutate the scheduler queue and must not free the
+  caller's original packet.
