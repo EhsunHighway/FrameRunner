@@ -18,7 +18,7 @@ extern const uint8_t     ETH_BROADCAST[6];
 
 
 /*
- * without __attribute__((packed)), the compiler may insert padding 
+ * without __attribute__((packed)), the compiler may insert padding
  * and the struct won't be 14 bytes.
  */
 typedef struct __attribute__((packed)) EthernetHeader {
@@ -29,7 +29,7 @@ typedef struct __attribute__((packed)) EthernetHeader {
 
 void ethernet_receive_event(const Event *e, void *ctx);
 
-/*@ 
+/*@
     behavior null:
         assumes sim == \null || iface == \null || dst_mac == \null || payload == \null;
         assigns \nothing;
@@ -37,13 +37,18 @@ void ethernet_receive_event(const Event *e, void *ctx);
     behavior valid:
         assumes \valid(sim) && \valid(iface) && \valid_read(dst_mac+(0..5)) && \valid(payload);
         assigns payload->data, payload->len, payload->capacity, iface->tx_bytes;
-        ensures \result == 0 ==> payload->len == \old(payload->len) + ETH_HDR_LEN;
+        ensures \result >= 0 || \result == -1;
+        ensures \result >= 0 ==> payload->len == \old(payload->len) + ETH_HDR_LEN;
     complete behaviors;
     disjoint behaviors;
 */
-int  ethernet_send(Simulator *sim, Interface *iface, const uint8_t dst_mac[6], uint16_t ethertype, Packet *payload);
+int  ethernet_send(Simulator    *sim,
+                   Interface    *iface,
+                   const uint8_t dst_mac[6],
+                   uint16_t      ethertype,
+                   Packet       *payload);
 
-/*@ 
+/*@
     behavior null:
         assumes iface == \null || frame == \null || out_ethertype == \null || frame->len < (size_t)ETH_HDR_LEN;
         assigns \nothing;

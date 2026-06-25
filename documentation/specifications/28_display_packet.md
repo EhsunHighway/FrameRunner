@@ -1,4 +1,4 @@
-# Module 25 — Display: Packet Header View
+# Module 28 — Display: Packet Header View
 
 **Files:** `src/display/header_view.c`, `src/display/header_view.h`
 **Status:** ⬜ Not started

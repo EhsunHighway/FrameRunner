@@ -1,4 +1,4 @@
-# Module 20 — BGP (Border Gateway Protocol v4)
+# Module 23 — BGP (Border Gateway Protocol v4)
 
 **Files:** `src/protocols/bgp.c`, `src/protocols/bgp.h`
 **Status:** ⬜ Not started

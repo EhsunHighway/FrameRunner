@@ -62,9 +62,9 @@ typedef struct __attribute__((packed)) IcmpHeader {
         assigns iface->rx_errors, iface->rx_dropped;
         ensures \result == 0 || \result == -1;
 */
-int      icmp_receive(Interface *iface, 
-                      Packet *pkt, 
-                      void *ctx);
+int      icmp_receive(Interface *iface,
+                      Packet    *pkt,
+                      void      *ctx);
 
 /*@
     behavior null_input:
@@ -82,13 +82,13 @@ int      icmp_receive(Interface *iface,
     complete behaviors;
     disjoint behaviors;
 */
-int      icmp_send_echo_request(Simulator *sim,
-                                uint32_t src_ip,
-                                uint32_t dst_ip,
-                                uint16_t id,
-                                uint16_t seq,
+int      icmp_send_echo_request(Simulator     *sim,
+                                uint32_t       src_ip,
+                                uint32_t       dst_ip,
+                                uint16_t       id,
+                                uint16_t       seq,
                                 const uint8_t *payload,
-                                size_t payload_len);
+                                size_t         payload_len);
 
 /*@
     behavior null_input:
@@ -119,9 +119,9 @@ int      icmp_send_echo_request(Simulator *sim,
         assigns iface->tx_bytes, iface->last_tx_time, iface->tx_errors;
         ensures \result == 0 || \result == -1;
 */
-int      icmp_send_echo_reply(Simulator *sim, 
-                              Interface *iface, 
-                              Packet *req_pkt);
+int      icmp_send_echo_reply(Simulator *sim,
+                              Interface *iface,
+                              Packet    *req_pkt);
 
 /*@
     behavior null_input:
@@ -135,9 +135,9 @@ int      icmp_send_echo_reply(Simulator *sim,
         assigns iface->tx_bytes, iface->last_tx_time, iface->tx_errors;
         ensures \result == 0 || \result == -1;
 */
-int      icmp_send_time_exceeded(Simulator *sim, 
-                                 Interface *iface, 
-                                 Packet *orig_pkt);
+int      icmp_send_time_exceeded(Simulator *sim,
+                                 Interface *iface,
+                                 Packet    *orig_pkt);
 
 /*@
     behavior null_input:
@@ -151,9 +151,9 @@ int      icmp_send_time_exceeded(Simulator *sim,
         assigns iface->tx_bytes, iface->last_tx_time, iface->tx_errors;
         ensures \result == 0 || \result == -1;
 */
-int      icmp_send_unreach_net(Simulator *sim, 
-                               Interface *iface, 
-                               Packet *orig_pkt);
+int      icmp_send_unreach_net(Simulator *sim,
+                               Interface *iface,
+                               Packet    *orig_pkt);
 
 /*@
     behavior null_input:
@@ -167,9 +167,9 @@ int      icmp_send_unreach_net(Simulator *sim,
         assigns iface->tx_bytes, iface->last_tx_time, iface->tx_errors;
         ensures \result == 0 || \result == -1;
 */
-int      icmp_send_unreach_host(Simulator *sim, 
-                                Interface *iface, 
-                                Packet *orig_pkt);
+int      icmp_send_unreach_host(Simulator *sim,
+                                Interface *iface,
+                                Packet    *orig_pkt);
 
 /*@
     behavior null_input:
@@ -183,9 +183,9 @@ int      icmp_send_unreach_host(Simulator *sim,
         assigns iface->tx_bytes, iface->last_tx_time, iface->tx_errors;
         ensures \result == 0 || \result == -1;
 */
-int      icmp_send_unreach_proto(Simulator *sim, 
-                                 Interface *iface, 
-                                 Packet *orig_pkt);
+int      icmp_send_unreach_proto(Simulator *sim,
+                                 Interface *iface,
+                                 Packet    *orig_pkt);
 
 /*@
     behavior null_input:
@@ -199,9 +199,9 @@ int      icmp_send_unreach_proto(Simulator *sim,
         assigns iface->tx_bytes, iface->last_tx_time, iface->tx_errors;
         ensures \result == 0 || \result == -1;
 */
-int      icmp_send_unreach_port(Simulator *sim, 
-                                Interface *iface, 
-                                Packet *orig_pkt);
+int      icmp_send_unreach_port(Simulator *sim,
+                                Interface *iface,
+                                Packet    *orig_pkt);
 
 /*@
     behavior null_input:
@@ -217,8 +217,8 @@ int      icmp_send_unreach_port(Simulator *sim,
 */
 int      icmp_send_frag_needed(Simulator *sim,
                                Interface *iface,
-                               Packet *orig_pkt,
-                               uint16_t next_hop_mtu);
+                               Packet    *orig_pkt,
+                               uint16_t   next_hop_mtu);
 
 /*@
     behavior null:

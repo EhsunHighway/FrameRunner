@@ -164,7 +164,9 @@ int  ip_receive(Interface *iface, Packet *frame, uint16_t ethertype, void *ctx);
     behavior valid:
         assumes \valid(sim) && \valid(iface) && \valid_read(dst_mac+(0..5)) && \valid(payload);
         assigns payload->data, payload->len, payload->capacity, iface->tx_bytes;
-        ensures \result == 0 ==> payload->len == \old(payload->len) + 20;
+        ensures \result >= 0 || \result == -1;
+        ensures \result >= 0 ==> payload->layer == 2;
+        ensures \result >= 0 ==> payload->len == \old(payload->len) + 20 + ETH_HDR_LEN;
     behavior prepend_failed:
         assumes \valid(sim) && \valid(iface) && \valid_read(dst_mac+(0..5)) && \valid(payload);
         assumes (size_t)(payload->data - payload->head) < sizeof(IpHeader);
@@ -189,9 +191,11 @@ int  ip_send(Simulator *sim, Interface *iface, uint8_t dst_mac[6], uint32_t src_
         assigns payload->data, payload->len, payload->capacity, payload->layer,
                 sim->topo->devices[0 .. sim->topo->dev_count-1]->interfaces[0 ..]->tx_bytes,
                 sim->topo->devices[0 .. sim->topo->dev_count-1]->interfaces[0 ..]->last_tx_time;
-        ensures \result == 0 || \result == -1;
-        ensures \result == 0 ==> payload->layer == 3;
-        ensures \result == 0 ==> payload->len == \old(payload->len) + IP_HDR_LEN + ETH_HDR_LEN;
+        ensures \result >= 0 || \result == -1;
+        ensures \result > 0 ==> payload->layer == 2;
+        ensures \result > 0 ==> payload->len == \old(payload->len) + IP_HDR_LEN + ETH_HDR_LEN;
+        ensures \result == 0 ==> payload->layer == \old(payload->layer);
+        ensures \result == 0 ==> payload->len == \old(payload->len);
     complete behaviors;
     disjoint behaviors;
 */

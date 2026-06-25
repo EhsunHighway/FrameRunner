@@ -1,4 +1,4 @@
-# Module 16 - TCP
+# Module 17 - TCP
 
 **Files:** `src/protocols/tcp.c`, `src/protocols/tcp.h`  
 **Status:** Ready for implementation  

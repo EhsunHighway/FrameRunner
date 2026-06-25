@@ -1,4 +1,4 @@
-# Module 21 — EIGRP (Enhanced Interior Gateway Routing Protocol)
+# Module 24 — EIGRP (Enhanced Interior Gateway Routing Protocol)
 
 **Files:** `src/protocols/eigrp.c`, `src/protocols/eigrp.h`
 **Status:** ⬜ Not started

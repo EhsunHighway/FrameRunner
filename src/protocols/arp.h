@@ -42,18 +42,6 @@ typedef struct __attribute__((packed)) ArpPacket {
 */
 void arp_init(Simulator *sim);
 
-/*@
-    behavior null:
-        assumes cache == \null || ip_addr == 0;
-        assigns \nothing;
-    behavior valid:
-        assumes \valid(cache) && ip_addr != 0 && \valid_read(mac_addr+(0..5));
-        assigns cache->entries[0..255];
-    complete behaviors;
-    disjoint behaviors;
-*/
-void arp_cache_add(ArpCache *cache, uint32_t ip_addr, const uint8_t mac_addr[6], uint64_t timestamp);
-
 /*@ 
     behavior null:
         assumes sim == \null || iface == \null || target_ip == 0;
@@ -86,64 +74,5 @@ int  arp_send_request(Simulator *sim, Interface *iface, uint32_t target_ip);
     disjoint behaviors;
 */
 int  arp_send_reply(Simulator *sim, Interface *iface, Packet *req_pkt);
-
-/*@
-    behavior null:
-        assumes cache == \null || ip_addr == 0 || out_mac == \null;
-        assigns \nothing;
-        ensures \result == -1;
-    behavior valid:
-        assumes \valid_read(cache) && ip_addr != 0 && \valid(out_mac+(0..5));
-        assigns \nothing;
-        ensures \result == 0 ==> \forall integer i; 0 <= i < 256 ==> (cache->entries[i].ip_addr == ip_addr ==> \forall integer j; 0 <= j < 6 ==> out_mac[j] == cache->entries[i].mac_addr[j]);
-    complete behaviors;
-    disjoint behaviors;
-*/
-int  arp_cache_lookup(const ArpCache *cache, uint32_t ip_addr, uint8_t out_mac[6]);
-
-/*@
-    behavior null:
-        assumes cache == \null || iface == \null || payload == \null || target_ip == 0;
-        assigns \nothing;
-        ensures \result == -1;
-    behavior valid:
-        assumes \valid(cache) && \valid(iface) && \valid(payload) && target_ip != 0;
-        assigns cache->pending[0..31], cache->pending_count;
-        ensures \result == 0 || \result == -1;
-*/
-int  arp_pending_enqueue(ArpCache *cache,
-                         Interface *iface,
-                         uint32_t target_ip,
-                         uint32_t src_ip,
-                         uint32_t dst_ip,
-                         uint8_t protocol,
-                         Packet *payload);
-
-/*@
-    behavior null:
-        assumes sim == \null || cache == \null || target_ip == 0 || mac_addr == \null;
-        assigns \nothing;
-        ensures \result == 0;
-    behavior valid:
-        assumes \valid(sim) && \valid(cache) && target_ip != 0 && \valid_read(mac_addr+(0..5));
-        assigns cache->pending[0..31], cache->pending_count;
-        ensures \result >= 0;
-*/
-int  arp_pending_flush(Simulator *sim,
-                       ArpCache *cache,
-                       uint32_t target_ip,
-                       const uint8_t mac_addr[6]);
-
-/*@
-    behavior null:
-        assumes cache == \null;
-        assigns \nothing;
-    behavior valid:
-        assumes \valid(cache);
-        assigns cache->entries[0..255];
-    complete behaviors;
-    disjoint behaviors;
-*/
-void arp_cache_cleanup(ArpCache *cache, uint64_t current_time);
 
 #endif /* ARP_H */

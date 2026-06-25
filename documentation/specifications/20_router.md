@@ -1,4 +1,4 @@
-# Module 28 — Router
+# Module 20 — Router
 
 **Files:** `src/network/router.c`, `src/network/router.h`
 **Status:** ⬜ Not started
@@ -13,11 +13,14 @@ A router is a Layer-3 forwarding node. It:
 1. Receives an IP datagram on any interface.
 2. Decrements TTL and drops (ICMP TTL-exceeded) if TTL hits zero.
 3. Performs a **Longest Prefix Match** (LPM) lookup in its `RouteTable`.
-4. Resolves the next-hop IP → MAC via its `ArpCache` (or sends an ARP request).
+4. Resolves the next-hop IP → MAC via its `ArpCache`, or sends an ARP request
+   and queues the packet in the ARP cache pending queue.
 5. Re-encapsulates in a new Ethernet frame and forwards out the egress interface.
 
 `Router` is a **thin specialization of `Device`** — it adds an embedded
-`ArpCache` and `RouteTable`. Unlike `Switch`, it never looks at MAC
+`ArpCache` and `RouteTable`. The cache storage is owned by Router; each router
+interface only borrows it through `interface_set_arp_cache`. Unlike `Switch`,
+it never looks at MAC
 source/destination for forwarding decisions. Unlike `Host`, it has a full
 LPM table rather than a single default gateway.
 
@@ -74,7 +77,7 @@ Both `ArpCache` and `RouteTable` are embedded — no malloc, no NULL guard.
 
 | Function                                     | Purpose                                                         |
 |----------------------------------------------|-----------------------------------------------------------------|
-| `router_create(name, sim)`                   | Alloc, init base Device, zero arp_cache and route_tbl.          |
+| `router_create(name, sim)`                   | Alloc, init base Device, call `arp_cache_init`, init route table. |
 | `router_free(r)`                             | Free interfaces owned by base, then `Router` itself.            |
 | `router_add_interface(r, iface)`             | Delegates to `device_add_interface`, installs rx handler.       |
 | `router_receive(r, in_iface, pkt)`           | TTL check → LPM → ARP resolve → forward or drop.               |
@@ -103,9 +106,16 @@ router_receive (LPM miss):
 router_receive (forward):
   route_table_lookup(&r->route_tbl, dst_ip) == entry &&
   entry != NULL &&
-  arp_cache_lookup(&r->arp_cache, entry->next_hop) == dst_mac &&
-  dst_mac != NULL
+  arp_cache_lookup(&r->arp_cache, next_hop_ip, dst_mac) == 0
   ==> ethernet_send(entry->iface, dst_mac, pkt)
+  &&  \result == 0
+
+router_receive (ARP miss):
+  route_table_lookup(&r->route_tbl, dst_ip) == entry &&
+  entry != NULL &&
+  arp_cache_lookup(&r->arp_cache, next_hop_ip, dst_mac) != 0
+  ==> arp_send_request(r->sim, entry->iface, next_hop_ip)
+  &&  arp_pending_enqueue(&r->arp_cache, entry->iface, next_hop_ip, ...)
   &&  \result == 0
 ```
 
@@ -145,8 +155,8 @@ router_receive(r, in_iface, pkt)
   ├─ route_table_lookup(dst_ip)
   │     NULL? ──────────────────────────────► icmp_unreachable, drop
   │
-  ├─ arp_cache_lookup(entry->next_hop)
-  │     NULL? ──────────────────────────────► arp_send_request, queue pkt
+  ├─ arp_cache_lookup(next_hop_ip)
+  │     miss? ──────────────────────────────► arp_send_request, arp_pending_enqueue, return 0
   │
   └─ ethernet_send(entry->iface, resolved_mac, pkt)
 ```
@@ -161,5 +171,6 @@ router_receive(r, in_iface, pkt)
   `router_add_route` / `router_del_route` to install learned routes.
 - `ArpCache` and `RouteTable` are both owned and embedded; `router_free`
   does not call `free` on them separately.
-- On ARP miss, the packet is **dropped and ARP is triggered** — no
-  queueing of pending packets (simplification acceptable for simulator).
+- On ARP miss, the packet is queued with `arp_pending_enqueue` after
+  `arp_send_request` succeeds. The ARP cache pending queue owns that packet
+  until `arp_pending_flush` sends it or frees it.

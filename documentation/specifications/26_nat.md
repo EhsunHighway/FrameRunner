@@ -1,4 +1,4 @@
-# Module 23 — NAT (Network Address Translation)
+# Module 26 — NAT (Network Address Translation)
 
 **Files:** `src/protocols/nat.c`, `src/protocols/nat.h`
 **Status:** ⬜ Not started

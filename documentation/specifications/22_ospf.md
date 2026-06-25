@@ -1,4 +1,4 @@
-# Module 19 — OSPF (Open Shortest Path First v2)
+# Module 22 — OSPF (Open Shortest Path First v2)
 
 **Files:** `src/protocols/ospf.c`, `src/protocols/ospf.h`
 **Status:** ⬜ Not started

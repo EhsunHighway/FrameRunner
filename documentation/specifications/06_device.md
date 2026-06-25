@@ -2,15 +2,16 @@
 
 **Files:** `src/network/device.c`, `src/network/device.h`
 **Status:** ✅ Implemented (93% / 83%)
-**Depends on:** interface, packet, arp_cache
+**Depends on:** interface, packet
 
 ---
 
 ## The Problem
 
-`Interface` is one NIC. A real network node has **several** of them, plus
-node-wide state (ARP cache, routing table, hostname). We need a `Device`
-container that:
+`Interface` is one NIC. A real network node has **several** of them. The base
+`Device` container owns only the interface list and the interface lifetime.
+Specialized nodes such as Host or Router add node-wide state like ARP cache,
+route table, protocol contexts, or hostname. We need a `Device` container that:
 
 1. Owns an array of `Interface *`.
 2. Owns the lifetime of interfaces added to it.
@@ -83,7 +84,7 @@ externally.
 ## Call Sequence — Adding an interface
 
 ```
-dev = device_create("R1", 4)        ┐  arp_cache zeroed
+dev = device_create("R1", 4)        ┐
                                     │  interfaces[] = malloc(4 * sizeof*)
                                     │  iface_count  = 0
                                     ┘
@@ -101,8 +102,9 @@ iface = interface_create("eth0", mac, ip, 24, 1500)
 ```
 
 After this call, any handler that holds `iface` can reach the owning
-device through `iface->device`. ARP cache access currently belongs to
-`Interface.arp_cache`, not to `Device`.
+device through `iface->device`. ARP cache access belongs to
+`Interface.arp_cache`, which is set separately by Host or Router setup code.
+The base `Device` does not allocate, initialize, or free an ARP cache.
 
 ## Call Sequence — IP-based lookup
 

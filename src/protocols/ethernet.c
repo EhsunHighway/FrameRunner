@@ -5,12 +5,12 @@
 const uint8_t ETH_BROADCAST[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
 
 static int mac_equal(const uint8_t a[6], const uint8_t b[6]) {
-    return memcmp(a, b, 6) == 0;    
+    return memcmp(a, b, 6) == 0;
 }
 
 void ethernet_receive_event(const Event *e, void *ctx) {
     (void)ctx;
-    
+
     Interface *iface  = (Interface *)e->dst_device;
     Packet    *frame  = (Packet *)e->packet;
 
@@ -34,7 +34,11 @@ void ethernet_receive_event(const Event *e, void *ctx) {
     }
 }
 
-int  ethernet_send(Simulator *sim, Interface *iface, const uint8_t dst_mac[6], uint16_t ethertype, Packet *payload) {
+int  ethernet_send(Simulator    *sim,
+                   Interface    *iface,
+                   const uint8_t dst_mac[6],
+                   uint16_t      ethertype,
+                   Packet       *payload) {
     if (!sim || !iface || !dst_mac || !payload) {
         return -1;
     }
@@ -89,7 +93,7 @@ int  ethernet_receive(Interface *iface, Packet *frame, uint16_t *out_ethertype) 
      * Network protocols use big-endian by convention; This is called “network byte order”.
      */
     *out_ethertype = ns_ntohs(eth_hdr->ethertype);
-    
+
     if (packet_strip(frame, ETH_HDR_LEN) == -1 ) {
         return -1;
     }

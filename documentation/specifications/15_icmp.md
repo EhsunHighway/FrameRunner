@@ -1,4 +1,4 @@
-# Module 14 - ICMP
+# Module 15 - ICMP
 
 **Files:** `src/protocols/icmp.c`, `src/protocols/icmp.h`  
 **Depends on:** ip, packet, interface, simulator, byte_order

@@ -27,42 +27,45 @@ ones.
 | #  | Module     | Spec                                          | Status |
 |----|------------|-----------------------------------------------|--------|
 | 09 | Ethernet   | [09_ethernet.md](09_ethernet.md)              | ✅ Done |
-| 10 | ARP        | [10_arp.md](10_arp.md)                        | ✅ Done |
-| 11 | MAC Table  | [11_mac_table.md](11_mac_table.md)            | ⬜ Next |
-| 12 | Switch     | [12_switch.md](12_switch.md)                  | ⬜      |
-| 13 | IPv4       | [13_ip.md](13_ip.md)                          | ⬜      |
-| 14 | ICMP       | [14_icmp.md](14_icmp.md)                      | ⬜      |
-| 15 | UDP        | [15_udp.md](15_udp.md)                        | ⬜      |
-| 16 | TCP        | [16_tcp.md](16_tcp.md)                        | ⬜      |
+| 10 | ARP Cache  | [10_arp_cache.md](10_arp_cache.md)            | ✅ Done |
+| 11 | ARP        | [11_arp.md](11_arp.md)                        | ✅ Done |
+| 12 | MAC Table  | [12_mac_table.md](12_mac_table.md)            | ⬜ Next |
+| 13 | Switch     | [13_switch.md](13_switch.md)                  | ⬜      |
+| 14 | IPv4       | [14_ip.md](14_ip.md)                          | ⬜      |
+| 15 | ICMP       | [15_icmp.md](15_icmp.md)                      | ⬜      |
+| 16 | UDP        | [16_udp.md](16_udp.md)                        | ⬜      |
+| 17 | TCP        | [17_tcp.md](17_tcp.md)                        | ⬜      |
+| 18 | Host       | [18_host.md](18_host.md)                      | ⬜      |
 
 ## Phase 3 — Routing
 
 | #  | Module        | Spec                                          | Status |
 |----|---------------|-----------------------------------------------|--------|
-| 17 | Route Table   | [17_route_table.md](17_route_table.md)        | ⬜      |
-| 18 | RIP           | [18_rip.md](18_rip.md)                        | ⬜      |
-| 19 | OSPF          | [19_ospf.md](19_ospf.md)                      | ⬜      |
-| 20 | BGP           | [20_bgp.md](20_bgp.md)                        | ⬜      |
-| 21 | EIGRP         | [21_eigrp.md](21_eigrp.md)                    | ⬜      |
-| 22 | IS-IS         | [22_isis.md](22_isis.md)                      | ⬜      |
-| 23 | NAT / PAT     | [23_nat.md](23_nat.md)                        | ⬜      |
+| 19 | Route Table   | [19_route_table.md](19_route_table.md)        | ⬜      |
+| 20 | Router        | [20_router.md](20_router.md)                  | ⬜      |
+| 21 | RIP           | [21_rip.md](21_rip.md)                        | ⬜      |
+| 22 | OSPF          | [22_ospf.md](22_ospf.md)                      | ⬜      |
+| 23 | BGP           | [23_bgp.md](23_bgp.md)                        | ⬜      |
+| 24 | EIGRP         | [24_eigrp.md](24_eigrp.md)                    | ⬜      |
+| 25 | IS-IS         | [25_isis.md](25_isis.md)                      | ⬜      |
+| 26 | NAT / PAT     | [26_nat.md](26_nat.md)                        | ⬜      |
 
 ## Phase 4 — Display + CLI
 
 | #  | Module             | Spec                                                 | Status |
 |----|--------------------|------------------------------------------------------|--------|
-| 24 | Topology Renderer  | [24_display_topology.md](24_display_topology.md)     | ⬜      |
-| 25 | Packet Renderer    | [25_display_packet.md](25_display_packet.md)         | ⬜      |
-| 26 | CLI / REPL         | [26_cli.md](26_cli.md)                               | ⬜      |
+| 27 | Topology Renderer  | [27_display_topology.md](27_display_topology.md)     | ⬜      |
+| 28 | Packet Renderer    | [28_display_packet.md](28_display_packet.md)         | ⬜      |
+| 29 | CLI / REPL         | [29_cli.md](29_cli.md)                               | ⬜      |
 
 ---
 
 ## How to Use These Files
 
-- **Already-implemented modules** (01–10) describe the *actual code* —
+- **Already-implemented modules** (01–11) describe the *actual code* —
   data structures, function call order, handler wiring. They are kept
   in sync with `src/`.
-- **Future modules** (11–26) are *design blueprints* — use them as the
+- **Future modules** (12–29) are *design blueprints* — use them as the
   starting point when implementing each one. Update the spec to match
   the real code once the module ships.
 - Every spec includes a **Sequential Call Flow** section — read this

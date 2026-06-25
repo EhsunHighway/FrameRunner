@@ -1,4 +1,4 @@
-# Module 22 — IS-IS (Intermediate System to Intermediate System)
+# Module 25 — IS-IS (Intermediate System to Intermediate System)
 
 **Files:** `src/protocols/isis.c`, `src/protocols/isis.h`
 **Status:** ⬜ Not started

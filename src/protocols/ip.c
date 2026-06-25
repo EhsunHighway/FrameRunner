@@ -1,5 +1,6 @@
 #include "ip.h"
 #include "arp.h"
+#include "arp_cache.h"
 #include <stdlib.h>
 #include <string.h>
 

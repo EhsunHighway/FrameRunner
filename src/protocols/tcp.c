@@ -48,6 +48,35 @@ static int tcp_sendq_has_unacked(const Tcb *tcb) {
     return 0;
 }
 
+/*@
+    behavior null_input:
+        assumes tcb == \null || clone == \null;
+        assigns \nothing;
+        ensures \result == -1;
+
+    behavior full:
+        assumes \valid(tcb) && \valid(clone);
+        assumes tcb->sendq.count >= 1;
+        assigns \nothing;
+        ensures \result == -1;
+
+    behavior first_free:
+        assumes \valid(tcb) && \valid(clone);
+        assumes tcb->sendq.count < 1;
+        assumes tcb->sendq.entries[0].pkt == \null;
+        assigns tcb->sendq;
+        ensures \result == 0;
+        ensures tcb->sendq.count == \old(tcb->sendq.count) + 1;
+        ensures tcb->sendq.entries[0].pkt == clone;
+        ensures tcb->sendq.entries[0].seq_start == seq_start;
+        ensures tcb->sendq.entries[0].seq_end == seq_end;
+        ensures tcb->sendq.entries[0].flags == flags;
+        ensures tcb->sendq.entries[0].sent_ts == now;
+        ensures tcb->sendq.entries[0].retransmits == 0;
+        ensures tcb->sendq.entries[0].acked == 0;
+
+    complete behaviors;
+*/
 static int tcp_sendq_track(Tcb     *tcb,
                            Packet  *clone,
                            uint32_t seq_start,
@@ -208,6 +237,22 @@ static int tcp_send_segment(Simulator     *sim,
     return 0;
 }
 
+/*@
+    behavior invalid:
+        assumes sim == \null || tcb == \null ||
+                (sim != \null && sim->sched == \null);
+        assigns \nothing;
+
+    behavior valid:
+        assumes \valid(sim) && sim->sched != \null && \valid(sim->sched);
+        assumes \valid(tcb);
+        assigns sim->sched->eq->events, sim->sched->eq->count,
+                tcb->retransmit_ts;
+        ensures tcb->retransmit_ts == \old(tcb->retransmit_ts) ||
+                tcb->retransmit_ts == \old(sim->sched->now) + 1000000ULL;
+
+    complete behaviors;
+*/
 static void tcp_schedule_retransmit(Simulator *sim,
                                     TcpContext *tcp_ctx,
                                     Tcb *tcb) {
@@ -248,6 +293,36 @@ static void tcp_schedule_retransmit(Simulator *sim,
     tcb->retransmit_ts = now;
 }
 
+/*@
+    behavior null_input:
+        assumes e == \null || ctx == \null;
+        assigns \nothing;
+
+    behavior no_tcb:
+        assumes e != \null && ctx != \null;
+        assumes ((Event *)e)->data == \null;
+        assigns \nothing;
+
+    behavior not_releasable:
+        assumes e != \null && ctx != \null;
+        assumes ((Event *)e)->data != \null;
+        assumes \valid((Tcb *)((Event *)e)->data);
+        assumes ((Tcb *)((Event *)e)->data)->valid != 1 ||
+                ((Tcb *)((Event *)e)->data)->state != TCP_TIME_WAIT;
+        assigns \nothing;
+
+    behavior release_time_wait:
+        assumes e != \null && ctx != \null;
+        assumes \valid((TcpTable *)ctx);
+        assumes ((Event *)e)->data != \null;
+        assumes \valid((Tcb *)((Event *)e)->data);
+        assumes ((Tcb *)((Event *)e)->data)->valid == 1;
+        assumes ((Tcb *)((Event *)e)->data)->state == TCP_TIME_WAIT;
+        assigns ((TcpTable *)ctx)->count, *((Tcb *)((Event *)e)->data);
+        ensures ((Tcb *)((Event *)e)->data)->valid == 0;
+
+    complete behaviors;
+*/
 static void tcp_time_wait_handler(const Event *e, void *ctx) {
     if (!e || !ctx) {
         return;

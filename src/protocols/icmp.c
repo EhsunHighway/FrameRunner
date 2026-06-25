@@ -1,10 +1,14 @@
 #include <string.h>
 #include "icmp.h"
 
-static int icmp_send_error(Simulator *sim, Interface *iface, Packet *orig_pkt,
-                           uint8_t type, uint8_t code, uint16_t next_hop_mtu) {
+static int icmp_send_error(Simulator *sim,
+                           Interface *iface,
+                           Packet    *orig_pkt,
+                           uint8_t    type,
+                           uint8_t    code,
+                           uint16_t   next_hop_mtu) {
     if (!sim || !iface || !orig_pkt) {
-        return -1; 
+        return -1;
     }
 
     if (!orig_pkt->head || !orig_pkt->data) {
@@ -39,7 +43,7 @@ static int icmp_send_error(Simulator *sim, Interface *iface, Packet *orig_pkt,
     size_t payload_quote_len = orig_pkt->len < 8 ? orig_pkt->len : 8;
     size_t  quote_len         = IP_HDR_LEN + payload_quote_len;
     size_t  error_len         = ICMP_HDR_LEN + quote_len;
-    Packet *err_pkt           = packet_create(error_len); 
+    Packet *err_pkt           = packet_create(error_len);
     if (!err_pkt) {
         iface->tx_errors++;
         return -1;
@@ -60,7 +64,7 @@ static int icmp_send_error(Simulator *sim, Interface *iface, Packet *orig_pkt,
     }
 
     uint8_t *quote = err_pkt->data + ICMP_HDR_LEN;
-    memcpy(quote, orig_pkt->data - IP_HDR_LEN, IP_HDR_LEN); 
+    memcpy(quote, orig_pkt->data - IP_HDR_LEN, IP_HDR_LEN);
     memcpy(quote + IP_HDR_LEN, orig_pkt->data, payload_quote_len);
     icmp_hdr->checksum = icmp_checksum(err_pkt->data, err_pkt->len);
 
@@ -116,7 +120,7 @@ int        icmp_receive(Interface *iface, Packet *pkt, void *ctx) {
         packet_free(pkt);
         return -1;
     }
-    
+
     IcmpHeader *icmp_hdr = (IcmpHeader *)pkt->data;
 
     switch (icmp_hdr->type) {
@@ -132,8 +136,8 @@ int        icmp_receive(Interface *iface, Packet *pkt, void *ctx) {
             }
             break;
         case ICMP_DEST_UNREACH:
-            if (icmp_hdr->code == 0 || icmp_hdr->code == 1 || 
-                icmp_hdr->code == 2 || icmp_hdr->code == 3 || 
+            if (icmp_hdr->code == 0 || icmp_hdr->code == 1 ||
+                icmp_hdr->code == 2 || icmp_hdr->code == 3 ||
                 icmp_hdr->code == 4) {
                 packet_free(pkt);
                 return 0;
@@ -149,14 +153,20 @@ int        icmp_receive(Interface *iface, Packet *pkt, void *ctx) {
             iface->rx_dropped++;
             packet_free(pkt);
             return -1;
-    }  
+    }
 
     iface->rx_dropped++;
     packet_free(pkt);
     return -1;
 }
 
-int        icmp_send_echo_request(Simulator *sim, uint32_t src_ip, uint32_t dst_ip, uint16_t id, uint16_t seq, const uint8_t *payload, size_t payload_len) {
+int        icmp_send_echo_request(Simulator      *sim,
+                                  uint32_t       src_ip,
+                                  uint32_t       dst_ip,
+                                  uint16_t       id,
+                                  uint16_t       seq,
+                                  const uint8_t *payload,
+                                  size_t         payload_len) {
     if (!sim) {
         return -1;
     }
@@ -190,7 +200,7 @@ int        icmp_send_echo_request(Simulator *sim, uint32_t src_ip, uint32_t dst_
     }
 
     return res;
-}       
+}
 
 int        icmp_send_echo_reply(Simulator *sim, Interface *iface, Packet *req_pkt) {
     if (!sim || !iface || !req_pkt) {
@@ -214,7 +224,7 @@ int        icmp_send_echo_reply(Simulator *sim, Interface *iface, Packet *req_pk
         packet_free(req_pkt);
         return -1;
     }
-    
+
     uint8_t *end = req_pkt->head + PKT_HEADROOM + req_pkt->capacity;
     if (req_pkt->data >= end) {
         iface->tx_errors++;
@@ -237,13 +247,13 @@ int        icmp_send_echo_reply(Simulator *sim, Interface *iface, Packet *req_pk
     }
 
     IpHeader   *req_ip    = (IpHeader *)(req_pkt->data - IP_HDR_LEN);
-    Packet     *reply_pkt = packet_create(req_pkt->len); 
+    Packet     *reply_pkt = packet_create(req_pkt->len);
     if (!reply_pkt) {
         iface->tx_errors++;
         packet_free(req_pkt);
         return -1;
     }
-    
+
     reply_pkt->len   = req_pkt->len;
     reply_pkt->layer = 4;
     memcpy(reply_pkt->data, req_pkt->data, req_pkt->len);
@@ -270,8 +280,8 @@ int        icmp_send_echo_reply(Simulator *sim, Interface *iface, Packet *req_pk
 uint16_t   icmp_checksum(const void *data, size_t len) {
     if (!data || len == 0) {
         return 0xFFFF;
-    } 
-    
+    }
+
     uint32_t sum = 0;
     const uint16_t *words = (const uint16_t *)data;
     for (size_t i = 0; i < len / 2; i++) {

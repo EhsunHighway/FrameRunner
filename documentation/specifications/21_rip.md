@@ -1,4 +1,4 @@
-# Module 18 — RIP (Routing Information Protocol v2)
+# Module 21 — RIP (Routing Information Protocol v2)
 
 **Files:** `src/protocols/rip.c`, `src/protocols/rip.h`
 **Status:** ⬜ Not started

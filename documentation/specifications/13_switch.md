@@ -1,4 +1,4 @@
-# Module 12 — Switch
+# Module 13 — Switch
 
 **Files:** `src/network/switch.c`, `src/network/switch.h`
 **Status:** ✅ Implemented

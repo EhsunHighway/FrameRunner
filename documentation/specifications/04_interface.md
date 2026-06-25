@@ -101,12 +101,19 @@ typedef struct Interface {
 ### The Critical Back-pointer
 
 ```
-   Interface ──device──► Device ──arp_cache──► ArpCache
+   Interface ──device──► owning Device subtype
+       │
+       └─arp_cache──► borrowed ArpCache owned by Host or Router
 ```
 
-Without this, ARP handlers — which only receive a bare `Interface *`
-from the event's `dst_device` slot — could not reach the cache to learn
-mappings. `device_add_interface(dev, iface)` sets `iface->device = dev`.
+`iface->device` and `iface->arp_cache` are separate links with different
+meanings.
+
+`device_add_interface(dev, iface)` sets `iface->device = dev`, so code that has
+only an `Interface *` can still find the owning node. `interface_set_arp_cache`
+sets `iface->arp_cache` to a borrowed cache pointer owned by Host or Router.
+ARP and IP use that borrowed cache pointer directly; Interface does not allocate
+or free the cache.
 
 ### Public API
 

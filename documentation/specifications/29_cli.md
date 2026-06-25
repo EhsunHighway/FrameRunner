@@ -1,4 +1,4 @@
-# Module 26 — CLI (Command Line Interface)
+# Module 29 — CLI (Command Line Interface)
 
 **Files:** `src/cli/cli.c`, `src/cli/cli.h`,
            `src/cli/commands.c`, `src/cli/commands.h`
@@ -37,7 +37,7 @@ a `FILE *out` parameter.
    cmd_table["show arp"] → cmd_show_arp(sim, argc, argv)
        │
        ▼ output
-   arp_cache_print(&R1->arp_cache, stdout)
+   arp_cache_print(router_or_host_owned_cache(R1), stdout)
 ```
 
 ---
@@ -159,9 +159,10 @@ cli_loop(state):
    │           │
    │           └─► cmd->handler(state->sim, argc, argv)
    │                   │
-   │                   │   e.g. cmd_show_arp:
-   │                   │       dev = topology_find_device_by_name(sim->topo, argv[2])
-   │                   │       arp_cache_print(&dev->arp_cache, state->out)
+  │                   │   e.g. cmd_show_arp:
+  │                   │       dev = topology_find_device_by_name(sim->topo, argv[2])
+  │                   │       cache = cache owned by Host or Router wrapper
+  │                   │       arp_cache_print(cache, state->out)
    │                   └─► return 0
 ```
 

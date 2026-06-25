@@ -1,4 +1,4 @@
-# Module 24 — Display: Topology View
+# Module 27 — Display: Topology View
 
 **Files:** `src/display/topology_view.c`, `src/display/topology_view.h`
 **Status:** ⬜ Not started
@@ -93,8 +93,8 @@ topology_view_print(topo, stdout):
    ├─► for i in 0..topo->dev_count:
    │       topology_view_print_device(topo->devices[i], out)
    │           │
-   │           │   detect type: if dev->arp_cache used → Router; else
-   │           │                if mac_table present → Switch; else Host
+   │           │   detect type: explicit DeviceType in future code;
+   │           │                do not infer type from base Device fields
    │           │   fprintf(out, "[Router] %s\n", dev->name)
    │           │
    │           └─► for j in 0..dev->iface_count:
@@ -124,9 +124,9 @@ topology_view_print(topo, stdout):
 
 ## Design Notes
 
-- **Device type detection**: at this milestone, check presence of
-  `Device.arp_cache` (non-zero entries) for routers; a cleaner approach
-  would add a `DeviceType` enum to `Device`. Improve in a later version.
+- **Device type detection**: base `Device` has no ARP cache field and does not
+  own ARP cache state. A future implementation should add an explicit
+  `DeviceType` enum or use typed Host/Router/Switch wrappers.
 - **NULL links on interfaces**: `iface->link` may be NULL (unconnected
   NIC). Skip link display for that interface.
 - **`FILE *out` parameter** makes the functions unit-testable with
