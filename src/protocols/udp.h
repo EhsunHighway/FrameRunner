@@ -14,9 +14,9 @@
 
 typedef struct UdpSocket UdpSocket;
 typedef void (*Udp_Recv_Handler)(uint32_t src_ip,
-                                  uint16_t src_port,
-                                  Packet *payload,
-                                  void *ctx);
+                                 uint16_t src_port,
+                                 Packet  *payload,
+                                 void    *ctx);
 
 struct UdpSocket {
     uint16_t         port;            // host order
