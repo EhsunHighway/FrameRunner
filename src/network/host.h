@@ -62,6 +62,12 @@ Host *host_create(const char *name,
     behavior valid:
         assumes \valid(host);
         frees host->base.interfaces[0 .. host->base.iface_count-1],
+              host->tcp_context,
+              host->udp_context,
+              host->tcp_table,
+              host->udp_state,
+              host->ip_stack,
+              host->arp_cache,
               host->base.interfaces,
               host;
 
@@ -95,6 +101,9 @@ void  host_free(Host *host);
         ensures \result == 0 ==> host->base.iface_count == \old(host->base.iface_count) + 1;
         ensures \result == 0 ==> host->base.interfaces[\old(host->base.iface_count)] == iface;
         ensures \result == 0 ==> iface->device == &host->base;
+        // Ownership: on success (\result == 0), iface is owned by host.
+        // The caller must NOT free iface independently; host_free will free it.
+        // On failure (\result == -1), ownership remains with the caller.
 
     complete behaviors;
     disjoint behaviors;

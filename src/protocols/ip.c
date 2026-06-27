@@ -113,9 +113,9 @@ int ip_stack_unregister_protocol(IpStack *stack, uint8_t protocol) {
 }
 
 int  ip_receive(Interface *iface,
-                 Packet   *frame,
-                 uint16_t  ethertype,
-                 void     *ctx) {
+                Packet   *frame,
+                uint16_t  ethertype,
+                void     *ctx) {
     (void)ethertype;
 
     if (!iface || !frame || frame->len < IP_HDR_LEN) {
@@ -142,8 +142,8 @@ int  ip_receive(Interface *iface,
     }
 
      // Verify checksum
-    uint8_t protocol    = ip_hdr->protocol;
-    iface->rx_bytes += frame->len;
+    uint8_t    protocol = ip_hdr->protocol;
+    iface->rx_bytes    += frame->len;
     IpStack   *stack    = (IpStack *)ctx;
     Simulator *sim = stack ? stack->sim : NULL;
     iface->last_rx_time = sim ? simulator_now(sim) : 0;
