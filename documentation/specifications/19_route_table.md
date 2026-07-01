@@ -372,6 +372,29 @@ Public APIs must reject `prefix_len > 32` before relying on the helper for a
 valid route. The helper still handles `>= 32` defensively to avoid undefined
 shifts.
 
+## Administrative Distance Helper
+
+The implementation SHOULD use one internal helper to derive administrative
+distance from the route protocol:
+
+```c
+static int route_admin_distance(uint8_t proto);
+```
+
+Required behavior:
+
+- `ROUTE_PROTO_DIRECT` returns `0`.
+- `ROUTE_PROTO_STATIC` returns `1`.
+- `ROUTE_PROTO_BGP` returns `20`.
+- `ROUTE_PROTO_EIGRP` returns `90`.
+- `ROUTE_PROTO_OSPF` returns `110`.
+- `ROUTE_PROTO_ISIS` returns `115`.
+- `ROUTE_PROTO_RIP` returns `120`.
+- unknown protocols return a large distance such as `255`.
+
+Administrative distance is not stored in `RouteRibEntry`. It is derived from
+`proto` only when comparing route candidates during `route_table_rebuild_fib`.
+
 ## Prefix Normalization
 
 `route_table_add` and `route_table_delete` MUST normalize prefixes:
@@ -411,6 +434,19 @@ This means:
 ## FIB Selection
 
 FIB rebuild chooses one active route per normalized `(prefix, prefix_len)` pair.
+
+Do not use the RIB duplicate key here. These two keys are intentionally
+different:
+
+```text
+RIB duplicate/update key: normalized prefix + prefix length + protocol
+FIB selection group:      normalized prefix + prefix length
+```
+
+Protocol is excluded from the FIB selection group because different protocols
+can advertise candidates for the same destination prefix. The FIB must choose
+one active candidate among them. Protocol is used only as an input to the
+administrative-distance comparison.
 
 For candidates with the same normalized prefix and prefix length, select:
 
@@ -485,117 +521,195 @@ directly.
 
 ### `route_table_init`
 
-Required behavior:
+Behavior summary:
 
-- If `table` is `NULL`, return.
-- Clear the whole table.
-- Set `rib_count == 0`.
-- Set `fib_count == 0`.
-- Set `next_sequence == 1`.
-- Mark every RIB entry invalid.
-- Mark every FIB entry invalid.
-- Clear every borrowed interface pointer.
+Initialize caller-owned route-table storage to an empty, usable state.
+
+Implementation order:
+
+1. If `table` is `NULL`, return.
+2. Clear the whole `RouteTable` object.
+3. Set `next_sequence` to `1`.
+
+Postconditions:
+
+- `rib_count == 0`.
+- `fib_count == 0`.
+- `next_sequence == 1`.
+- Every RIB entry is invalid.
+- Every FIB entry is invalid.
+- Every borrowed `iface` pointer stored in RIB or FIB is `NULL`.
 
 ### `route_table_add`
 
-Required behavior:
+Behavior summary:
 
-- If `table` is `NULL`, return `-1`.
-- If `iface` is `NULL`, return `-1`.
-- If `prefix_len > 32`, return `-1`.
-- If `proto == 0`, return `-1`.
-- Normalize `prefix`.
-- Search all 256 RIB slots for a valid entry with the same duplicate key.
-- If found:
-  - update `next_hop`
-  - update `iface`
-  - update `metric`
-  - keep `sequence` unchanged
-  - rebuild FIB
-  - return `0` if rebuild succeeds
-- If not found:
-  - find an invalid RIB slot
-  - if no invalid slot exists, return `-1`
-  - write normalized prefix, prefix length, protocol, next hop, iface, metric
-  - set `sequence` to `next_sequence`
-  - increment `next_sequence`
-  - set `valid == 1`
-  - increment `rib_count`
-  - rebuild FIB
-  - return `0` if rebuild succeeds
+Add a new RIB candidate or update an existing RIB candidate with the same RIB
+duplicate key. Rebuild the FIB after a successful add or update.
 
-If FIB rebuild fails after a new insert, the implementation MUST roll back the
-new RIB entry before returning `-1`. With equal RIB and FIB capacities, rebuild
-should not fail when the RIB is valid, but the failure rule must still be clear.
+Implementation order:
+
+1. If `table` is `NULL`, return `-1`.
+2. If `iface` is `NULL`, return `-1`.
+3. If `prefix_len > 32`, return `-1`.
+4. If `proto == 0`, return `-1`.
+5. Compute `normalized_prefix = prefix & route_prefix_mask(prefix_len)`.
+6. Scan all 256 RIB slots for a valid entry whose RIB duplicate key matches:
+   normalized prefix, prefix length, and protocol.
+7. If a matching RIB entry is found:
+   - update only `next_hop`, `iface`, and `metric`
+   - keep `sequence` unchanged
+   - rebuild the FIB
+   - return `0` if rebuild succeeds, otherwise return `-1`
+8. If no matching RIB entry is found, scan all 256 RIB slots for the first
+   invalid slot.
+9. If no invalid RIB slot exists, return `-1`.
+10. Write the new RIB candidate into that invalid slot:
+    normalized prefix, prefix length, protocol, next hop, iface, metric,
+    `selected == 0`, and `valid == 1`.
+11. Set the new entry's `sequence` to the old `next_sequence`.
+12. Increment `next_sequence`.
+13. Increment `rib_count`.
+14. Rebuild the FIB.
+15. If rebuild succeeds, return `0`.
+16. If rebuild fails, roll back the new RIB entry and the count/sequence
+    changes, then return `-1`.
+
+Postconditions:
+
+- On successful update, `rib_count` does not change.
+- On successful insert, `rib_count` increases by one.
+- On successful update, the existing entry keeps its original `sequence`.
+- On failed insert after mutation, the inserted RIB slot is invalid again and
+  `rib_count`/`next_sequence` are restored.
 
 ### `route_table_delete`
 
-Required behavior:
+Behavior summary:
 
-- If `table` is `NULL`, return `-1`.
-- If `prefix_len > 32`, return `-1`.
-- If `proto == 0`, return `-1`.
-- Normalize `prefix`.
-- Search all 256 RIB slots for a valid entry with the same duplicate key.
-- If no matching entry exists, return `-1`.
-- If a matching entry exists:
-  - mark it invalid
-  - clear `selected`
-  - clear `iface`
-  - clear the remaining fields when practical
-  - decrement `rib_count` if greater than zero
-  - rebuild FIB
-  - return `0`
+Remove one RIB candidate identified by the RIB duplicate key, then rebuild the
+FIB from the remaining RIB candidates.
+
+Implementation order:
+
+1. If `table` is `NULL`, return `-1`.
+2. If `prefix_len > 32`, return `-1`.
+3. If `proto == 0`, return `-1`.
+4. Compute `normalized_prefix = prefix & route_prefix_mask(prefix_len)`.
+5. Scan all 256 RIB slots for a valid entry whose RIB duplicate key matches:
+   normalized prefix, prefix length, and protocol.
+6. If no matching entry exists, return `-1`.
+7. Mark the matching entry invalid.
+8. Clear its `selected` field.
+9. Clear its borrowed `iface` pointer.
+10. Clear the remaining fields when practical.
+11. Decrement `rib_count` if it is greater than zero.
+12. Rebuild the FIB.
+13. Return `0` if rebuild succeeds, otherwise return `-1`.
 
 Deletion does not compact the RIB.
 
 ### `route_table_flush_proto`
 
-Required behavior:
+Behavior summary:
 
-- If `table` is `NULL`, return `0`.
-- If `proto == 0`, return `0`.
-- Scan all 256 RIB slots.
-- Invalidate every valid RIB entry with the matching protocol.
-- Clear each invalidated entry's `iface` pointer.
-- Decrement `rib_count` once per invalidated entry.
-- Rebuild FIB once after the scan.
-- Return the number of RIB entries invalidated.
+Remove all RIB candidates installed by one protocol, then rebuild the FIB once.
+
+Implementation order:
+
+1. If `table` is `NULL`, return `0`.
+2. If `proto == 0`, return `0`.
+3. Initialize an invalidated-entry counter to `0`.
+4. Scan all 256 RIB slots.
+5. For each valid RIB entry whose `proto` matches:
+   - mark it invalid
+   - clear `selected`
+   - clear the borrowed `iface` pointer
+   - decrement `rib_count` if it is greater than zero
+   - increment the invalidated-entry counter
+6. Rebuild the FIB once after the scan.
+7. Return the invalidated-entry counter.
 
 ### `route_table_rebuild_fib`
 
-Required behavior:
+Behavior summary:
 
-- If `table` is `NULL`, return `-1`.
-- Clear all FIB entries.
-- Set `fib_count == 0`.
-- Set every valid RIB entry's `selected` field to `0`.
-- For each valid RIB entry:
-  - find whether a FIB entry already exists with the same normalized prefix and
-    prefix length
-  - if no FIB entry exists, create one from this RIB entry
-  - if one exists, compare this RIB entry against the currently selected RIB
-    entry using administrative distance, metric, and sequence
-  - replace the FIB entry if the new candidate is better
-- Mark selected RIB entries with `selected == 1`.
-- Return `0`.
+Rebuild the FIB from the RIB. The RIB is the source of truth. The resulting FIB
+contains one selected active route for each unique normalized `(prefix,
+prefix_len)` group.
+
+Implementation order:
+
+1. If `table` is `NULL`, return `-1`.
+2. Clear all FIB entries.
+3. Set `fib_count == 0`.
+4. Scan all 256 RIB slots and set every valid RIB entry's `selected` field to
+   `0`. This removes stale selection marks before choosing winners.
+5. For each valid RIB entry, do the following ordered substeps.
+6. Scan the FIB slots to look for a valid FIB entry already representing this
+   RIB entry's destination group. A FIB entry represents the same group when:
+   - `fib_entry->valid == 1`
+   - `fib_entry->prefix == rib_entry->prefix`
+   - `fib_entry->prefix_len == rib_entry->prefix_len`
+   Do not check `proto` in this match. Protocol is not part of the FIB group
+   key. Do not rank by prefix length during rebuild; prefix length must be
+   equal here because it identifies the group.
+7. If a matching FIB entry exists:
+   - `matching_fib->rib_index` is the array index of the RIB entry that
+     currently backs this FIB entry
+   - read the current RIB entry as `table->rib[matching_fib->rib_index]`
+   - compare this RIB entry against that current RIB entry
+   - lower administrative distance wins immediately
+   - if administrative distance is equal, lower metric wins
+   - if administrative distance and metric are both equal, lower sequence wins
+   - if this RIB entry wins, clear `selected` on the old RIB entry, replace the
+     FIB entry fields with this RIB entry's forwarding fields, set `rib_index`
+     to this RIB slot index, and set this RIB entry's `selected` field to `1`
+   - after handling the matching FIB entry, move to the next RIB entry
+8. If no matching FIB entry exists:
+   - scan all 256 FIB slots for the first invalid slot
+   - write one new FIB entry copied from this RIB entry into that invalid slot
+   - set the new FIB entry's `rib_index` to this RIB slot index
+   - set this RIB entry's `selected` field to `1`
+   - increment `fib_count`
+   - move to the next RIB entry
+9. Return `0`.
 
 Because FIB capacity equals RIB capacity, rebuild should be able to represent
 all unique prefixes from a valid RIB.
 
+Postconditions:
+
+- Every valid FIB entry points back to one selected RIB entry by `rib_index`.
+- Every selected RIB entry has `selected == 1`.
+- Every non-selected valid RIB entry has `selected == 0`.
+- `fib_count` equals the number of unique normalized `(prefix, prefix_len)`
+  groups among valid RIB entries.
+
 ### `route_table_lookup`
 
-Required behavior:
+Behavior summary:
 
-- If `table` is `NULL`, return `NULL`.
-- Treat `dst_ip` as host order.
-- Search valid FIB entries only.
-- Ignore FIB entries with `prefix_len > 32`.
-- First pass: consider only entries with `prefix_len > 24`.
-- If first pass finds a match, return the best match from that pass.
-- Second pass: consider only entries with `prefix_len <= 24`.
-- Return the best match from the second pass or `NULL`.
-- Lookup assigns nothing.
+Search the FIB for the best route matching `dst_ip` using longest-prefix match.
+The lookup does not modify the table.
+
+Implementation order:
+
+1. If `table` is `NULL`, return `NULL`.
+2. Treat `dst_ip` as host order.
+3. Search valid FIB entries only.
+4. Ignore FIB entries with `prefix_len > 32`.
+5. First scan FIB entries with `prefix_len > 24`.
+6. For each matching long-prefix entry, keep the entry with the largest
+   `prefix_len`. If two matches have the same `prefix_len`, keep the earlier
+   slot.
+7. If any long-prefix match was found, return the best long-prefix match.
+8. If no long-prefix match was found, scan FIB entries with `prefix_len <= 24`,
+   including `/0`.
+9. For each matching normal-prefix entry, keep the entry with the largest
+   `prefix_len`. If two matches have the same `prefix_len`, keep the earlier
+   slot.
+10. Return the best normal-prefix match or `NULL`.
 
 The returned pointer points into `table->fib[0 .. 255]`.
 
@@ -632,23 +746,34 @@ route_table_add(...)
 ```text
 route_table_rebuild_fib(table)
   |
+  +-- null table: return -1
+  |
   +-- clear FIB
   |
   +-- clear selected on all valid RIB entries
   |
   +-- for every valid RIB entry:
         |
-        +-- no FIB entry for this prefix/len:
-        |     create FIB entry from RIB entry
+        +-- search valid FIB entries for same prefix/len
         |
-        +-- FIB entry exists:
-              compare current selected RIB vs this RIB
-              lower distance wins
-              then lower metric wins
-              then older sequence wins
-              update FIB if this RIB wins
-  |
-  +-- mark selected RIB entries
+        +-- match found?
+              |
+              +-- yes:
+              |     current = RIB[fib.rib_index]
+              |     compare candidate vs current:
+              |       lower distance, then lower metric, then lower sequence
+              |     if candidate wins:
+              |       clear current.selected
+              |       replace FIB entry
+              |       mark candidate selected
+              |     continue with next RIB entry
+              |
+              +-- no:
+                    search for first invalid FIB slot
+                    create FIB entry from RIB entry
+                    mark RIB entry selected
+                    increment fib_count
+                    continue with next RIB entry
   |
   +-- return 0
 ```
@@ -696,6 +821,17 @@ Put these before the public function declarations in `route_table.h`.
     predicate route_valid_prefix_len(uint8_t prefix_len) =
         prefix_len <= 32;
 
+    predicate route_prefix_is_normalized(uint32_t prefix,
+                                         uint8_t prefix_len);
+
+    predicate route_prefix_normalizes(uint32_t input,
+                                      uint8_t prefix_len,
+                                      uint32_t stored);
+
+    predicate route_prefix_matches(uint32_t ip,
+                                   uint32_t prefix,
+                                   uint8_t prefix_len);
+
     predicate route_valid_rib_count(RouteTable *table) =
         0 <= table->rib_count && table->rib_count <= 256;
 
@@ -708,7 +844,9 @@ Put these before the public function declarations in `route_table.h`.
               table->rib[i].selected == 0 &&
               table->rib[i].iface == \null) ||
              (table->rib[i].valid == 1 &&
-              table->rib[i].prefix_len <= 32 &&
+              route_valid_prefix_len(table->rib[i].prefix_len) &&
+              route_prefix_is_normalized(table->rib[i].prefix,
+                                         table->rib[i].prefix_len) &&
               table->rib[i].proto != 0 &&
               table->rib[i].iface != \null));
 
@@ -717,13 +855,15 @@ Put these before the public function declarations in `route_table.h`.
             ((table->fib[i].valid == 0 &&
               table->fib[i].iface == \null) ||
              (table->fib[i].valid == 1 &&
-              table->fib[i].prefix_len <= 32 &&
+              route_valid_prefix_len(table->fib[i].prefix_len) &&
+              route_prefix_is_normalized(table->fib[i].prefix,
+                                         table->fib[i].prefix_len) &&
               table->fib[i].proto != 0 &&
               table->fib[i].iface != \null &&
               0 <= table->fib[i].rib_index &&
               table->fib[i].rib_index < 256));
 
-    predicate route_table_well_formed(RouteTable *table) =
+    predicate route_table_basic_valid(RouteTable *table) =
         \valid(table) &&
         route_valid_rib_count(table) &&
         route_valid_fib_count(table) &&
@@ -733,8 +873,10 @@ Put these before the public function declarations in `route_table.h`.
 ```
 
 These predicates do not say the FIB contains the best routes. They only say the
-memory shape and basic field ranges are valid. Best-route and LPM properties
-belong to `route_table_rebuild_fib` and `route_table_lookup`.
+memory shape, count ranges, slot ownership, and basic prefix validity are safe.
+`route_table_basic_valid(table)` is a structural invariant, not a shortcut for
+route-selection correctness. Best-route and LPM properties belong to
+`route_table_rebuild_fib`, `route_table_lookup`, and KLEVA tests.
 
 ### `route_table_init`
 
@@ -764,7 +906,7 @@ belong to `route_table_rebuild_fib` and `route_table_lookup`.
                 table->fib[i].valid == 0;
         ensures \forall integer i; 0 <= i < 256 ==>
                 table->fib[i].iface == \null;
-        ensures route_table_well_formed(table);
+        ensures route_table_basic_valid(table);
 
     complete behaviors;
     disjoint behaviors;
@@ -783,7 +925,7 @@ void route_table_init(RouteTable *table);
         ensures \result == -1;
 
     behavior valid_input:
-        assumes route_table_well_formed(table) && \valid(iface);
+        assumes route_table_basic_valid(table) && \valid(iface);
         assumes prefix_len <= 32;
         assumes proto != 0;
         assigns table->rib[0 .. 255],
@@ -800,12 +942,15 @@ void route_table_init(RouteTable *table);
         ensures \result == 0 ==>
                 \exists integer i; 0 <= i < 256 &&
                     table->rib[i].valid == 1 &&
+                    route_prefix_normalizes(prefix,
+                                            prefix_len,
+                                            table->rib[i].prefix) &&
                     table->rib[i].prefix_len == prefix_len &&
                     table->rib[i].proto == proto &&
                     table->rib[i].next_hop == next_hop &&
                     table->rib[i].iface == iface &&
                     table->rib[i].metric == metric;
-        ensures route_table_well_formed(table);
+        ensures route_table_basic_valid(table);
 
     complete behaviors;
     disjoint behaviors;
@@ -821,8 +966,6 @@ int route_table_add(RouteTable *table,
 
 Additional required proof/test property:
 
-- The stored RIB prefix for the inserted or updated entry is normalized:
-  `stored_prefix == (prefix & route_prefix_mask(prefix_len))`.
 - If an existing duplicate key is updated, its `sequence` is unchanged.
 - If a new RIB entry is inserted, its `sequence` is the old `next_sequence`.
 - On successful insert, `next_sequence` increments by one.
@@ -837,7 +980,7 @@ Additional required proof/test property:
         ensures \result == -1;
 
     behavior valid_input:
-        assumes route_table_well_formed(table);
+        assumes route_table_basic_valid(table);
         assumes prefix_len <= 32;
         assumes proto != 0;
         assigns table->rib[0 .. 255],
@@ -849,7 +992,15 @@ Additional required proof/test property:
                 table->rib_count == \old(table->rib_count);
         ensures \result == 0 ==>
                 table->rib_count == \old(table->rib_count) - 1;
-        ensures route_table_well_formed(table);
+        ensures \result == 0 ==>
+                \forall integer i; 0 <= i < 256 ==>
+                    table->rib[i].valid == 0 ||
+                    !route_prefix_normalizes(prefix,
+                                             prefix_len,
+                                             table->rib[i].prefix) ||
+                    table->rib[i].prefix_len != prefix_len ||
+                    table->rib[i].proto != proto;
+        ensures route_table_basic_valid(table);
 
     complete behaviors;
     disjoint behaviors;
@@ -876,7 +1027,7 @@ Additional required proof/test property:
         ensures \result == 0;
 
     behavior valid:
-        assumes route_table_well_formed(table);
+        assumes route_table_basic_valid(table);
         assumes proto != 0;
         assigns table->rib[0 .. 255],
                 table->rib_count,
@@ -888,7 +1039,7 @@ Additional required proof/test property:
         ensures \forall integer i; 0 <= i < 256 ==>
                 table->rib[i].valid == 0 ||
                 table->rib[i].proto != proto;
-        ensures route_table_well_formed(table);
+        ensures route_table_basic_valid(table);
 
     complete behaviors;
     disjoint behaviors;
@@ -911,7 +1062,7 @@ Additional required proof/test property:
         ensures \result == -1;
 
     behavior valid:
-        assumes route_table_well_formed(table);
+        assumes route_table_basic_valid(table);
         assigns table->rib[0 .. 255],
                 table->fib[0 .. 255],
                 table->fib_count;
@@ -919,13 +1070,22 @@ Additional required proof/test property:
         ensures table->fib_count >= 0;
         ensures table->fib_count <= table->rib_count;
         ensures \forall integer i; 0 <= i < 256 ==>
+                \old(table->rib[i].valid) == 1 ==>
+                    table->rib[i].prefix == \old(table->rib[i].prefix) &&
+                    table->rib[i].prefix_len == \old(table->rib[i].prefix_len) &&
+                    table->rib[i].proto == \old(table->rib[i].proto) &&
+                    table->rib[i].next_hop == \old(table->rib[i].next_hop) &&
+                    table->rib[i].iface == \old(table->rib[i].iface) &&
+                    table->rib[i].metric == \old(table->rib[i].metric) &&
+                    table->rib[i].sequence == \old(table->rib[i].sequence);
+        ensures \forall integer i; 0 <= i < 256 ==>
                 table->fib[i].valid == 0 ||
                 (table->fib[i].prefix_len <= 32 &&
                  0 <= table->fib[i].rib_index &&
                  table->fib[i].rib_index < 256 &&
                  table->rib[table->fib[i].rib_index].valid == 1 &&
                  table->rib[table->fib[i].rib_index].selected == 1);
-        ensures route_table_well_formed(table);
+        ensures route_table_basic_valid(table);
 
     complete behaviors;
     disjoint behaviors;
@@ -952,13 +1112,16 @@ Additional required proof/test property:
         ensures \result == \null;
 
     behavior valid:
-        assumes route_table_well_formed(table);
+        assumes route_table_basic_valid(table);
         assigns \nothing;
         ensures \result == \null ||
                 \exists integer i; 0 <= i < 256 &&
                     \result == &table->fib[i] &&
                     table->fib[i].valid == 1 &&
-                    table->fib[i].prefix_len <= 32;
+                    table->fib[i].prefix_len <= 32 &&
+                    route_prefix_matches(dst_ip,
+                                         table->fib[i].prefix,
+                                         table->fib[i].prefix_len);
 
     complete behaviors;
     disjoint behaviors;
@@ -968,7 +1131,6 @@ RouteFibEntry *route_table_lookup(RouteTable *table, uint32_t dst_ip);
 
 Additional required proof/test property:
 
-- A non-null result matches `dst_ip`.
 - No valid FIB entry with a longer prefix length also matches `dst_ip`.
 - If any matching long-prefix FIB entry exists with `prefix_len > 24`, lookup
   returns a long-prefix result.

@@ -35,13 +35,13 @@ above it in the table. Numbers are sequential build order. Coverage targets:
 
 ## Phase 3 — L3 Protocols & Host Node
 
-| #  | Module              | File(s)                     | Depends On              | Status          | Tests (line / branch)  |
-|----|---------------------|-----------------------------|-------------------------|-----------------|------------------------|
-| 14 | IPv4                | `protocols/ip.c/h`          | ethernet, arp_cache, arp | ✅ Done        | 62% / 48% ❌           |
-| 15 | ICMP                | `protocols/icmp.c/h`        | ip                      | ✅ Done         | 79% / 61% ❌           |
-| 16 | UDP                 | `protocols/udp.c/h`         | ip, icmp                | ✅ Done         | 80% / 73% ❌           |
-| 17 | TCP                 | `protocols/tcp.c/h`         | ip                      | ⬜ Not started  | —                      |
-| 18 | Host                | `network/host.c/h`          | device, arp_cache, ip   | ⬜ Not started  | —                      |
+| #  | Module              | File(s)                     | Depends On               | Status          | Tests (line / branch)  |
+|----|---------------------|-----------------------------|--------------------------|-----------------|------------------------|
+| 14 | IPv4                | `protocols/ip.c/h`          | ethernet, arp_cache, arp | ✅ Done         | 62% / 48% ❌           |
+| 15 | ICMP                | `protocols/icmp.c/h`        | ip                       | ✅ Done         | 79% / 61% ❌           |
+| 16 | UDP                 | `protocols/udp.c/h`         | ip, icmp                 | ✅ Done         | 80% / 73% ❌           |
+| 17 | TCP                 | `protocols/tcp.c/h`         | ip                       | ✅ Done         | —                      |
+| 18 | Host                | `network/host.c/h`          | device, arp_cache, ip    | ✅ Done         | —                      |
 
 ---
 
