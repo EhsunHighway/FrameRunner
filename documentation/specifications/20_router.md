@@ -111,13 +111,18 @@ TTL is the IPv4 hop limit.
 
 Every router hop must decrement TTL before forwarding. If the packet arrives
 with `ttl <= 1`, forwarding would make TTL zero, so the router must drop the
-packet and send ICMP Time Exceeded when that helper exists.
+packet and send ICMP Time Exceeded.
 
-The current ICMP module does not expose a public TTL-exceeded helper. The
-Router implementation must still structure the TTL path clearly:
+The ICMP module already exposes:
 
-- before a public helper exists, drop and count the packet
-- after the helper exists, send ICMP Time Exceeded from this branch
+```c
+icmp_send_time_exceeded(sim, ingress_iface, pkt)
+```
+
+The Router implementation must call that helper from the TTL-expired branch.
+The helper reads the original IPv4 packet and sends ICMP Type `11`, Code `0`
+back to the original source. ICMP does not consume the original packet, so the
+Router must still free/drop the original packet after the helper returns.
 
 Do not silently forward a packet with expired TTL.
 
@@ -263,8 +268,8 @@ route points at it.
 Router receive consumes every non-NULL packet passed to it:
 
 - malformed packet paths free the packet
-- TTL expiration drops/frees the packet unless a future ICMP helper consumes it
-- no route drops/frees the packet unless a future ICMP helper consumes it
+- TTL expiration calls `icmp_send_time_exceeded`, then drops/frees the packet
+- no route calls `icmp_send_unreach_net`, then drops/frees the packet
 - ARP miss queues the packet in the ARP pending queue on success
 - ARP hit transfers the packet to Ethernet send path on success
 
@@ -303,6 +308,14 @@ table public API. Routing protocol modules should call these wrappers instead
 of reaching into `router->route_tbl` directly.
 
 ## Function Behavior
+
+Function behavior is an implementation contract. For simple functions, the
+required-behavior list is written in execution order unless the text explicitly
+says order does not matter. For non-trivial functions, especially functions with
+ownership transfer, queueing, lookup, selection, state-machine transitions, or
+packet forwarding, split the section into behavior summary, implementation
+order, and postconditions so the coder does not have to guess.
+
 
 ### `router_create`
 
@@ -344,13 +357,48 @@ Required behavior:
 - Call `device_add_interface(&router->base, iface)`.
 - If Device rejects the interface, return `-1`.
 - Call `interface_set_arp_cache(iface, &router->arp_cache)`.
-- Bind the interface receive path so incoming IPv4 frames can reach this
-  Router's receive function with this Router as context.
+- Call `interface_set_rx_handler(iface, router_rx_shim, router)`.
 - Return `0`.
 
-The exact receive-binding helper may be an interface setter or direct assignment
-depending on the current interface API. The important postcondition is that
-the interface can deliver inbound packets to `router_receive`.
+`router_receive` cannot be stored directly in `iface->rx_handler` because the
+function signatures are different.
+
+`Interface` receive handlers have this shape:
+
+```c
+void (*RxHandler)(Interface *iface,
+                  Packet    *pkt,
+                  uint16_t   ethertype,
+                  void      *ctx);
+```
+
+`router_receive` has this shape:
+
+```c
+int router_receive(Router    *router,
+                   Interface *in_iface,
+                   Packet    *pkt);
+```
+
+Therefore `router.c` needs a private adapter function:
+
+```c
+static void router_rx_shim(Interface *iface,
+                           Packet    *pkt,
+                           uint16_t   ethertype,
+                           void      *ctx);
+```
+
+The shim receives `ctx`, casts it to `Router *`, and calls
+`router_receive(router, iface, pkt)` for IPv4 packets. If `ethertype` is not
+`ETHERTYPE_IPV4`, the shim must free `pkt` and count the packet as dropped or
+unsupported. The Router module forwards IPv4 only.
+
+Successful `router_add_interface` must leave:
+
+- `iface->rx_handler == router_rx_shim`
+- `iface->handler_ctx == router`
+- `iface->arp_cache == &router->arp_cache`
 
 ### `router_add_route`
 
@@ -394,35 +442,43 @@ Required behavior:
 - If `router->sim == NULL`, free `pkt` and return `-1`.
 - If `pkt->data == NULL || pkt->len < IP_HDR_LEN`, free `pkt`, increment
   `in_iface->rx_errors`, and return `-1`.
+- Validate the IPv4 header with `ip_validate_header(pkt)` before changing TTL.
+- If validation fails, free `pkt`, increment `rx_errors`, return `-1`.
 - Read the IPv4 header at `pkt->data`.
-- If the packet is not IPv4, free `pkt`, increment `rx_errors`, return `-1`.
-- Validate the IPv4 header checksum before changing TTL.
-- If checksum is invalid, free `pkt`, increment `rx_errors`, return `-1`.
-- If `ttl <= 1`, drop the packet:
-  - current implementation target: free `pkt`, increment `rx_dropped`, return
-    `-1`
-  - future improvement: send ICMP Time Exceeded from this branch
+- If `ttl <= 1`:
+  - call `icmp_send_time_exceeded(router->sim, in_iface, pkt)`
+  - increment `in_iface->rx_dropped`
+  - free `pkt`
+  - return `-1`
 - Convert destination IP from network order to host order.
 - Look up the destination in `router->route_tbl`.
-- If lookup misses, drop the packet:
-  - current implementation target: free `pkt`, increment `rx_dropped`, return
-    `-1`
-  - future improvement: send ICMP Net/Host Unreachable from this branch
+- If lookup misses:
+  - call `icmp_send_unreach_net(router->sim, in_iface, pkt)`
+  - increment `in_iface->rx_dropped`
+  - free `pkt`
+  - return `-1`
 - Determine ARP target:
-  - if route `next_hop != 0`, target is `next_hop`
-  - otherwise target is final destination IP
+  - call this value `arp_target_ip`
+  - if route `next_hop != 0`, `arp_target_ip = route->next_hop`
+  - otherwise `arp_target_ip = dst_ip`
+  - `dst_ip` is the final IPv4 destination from the packet header, converted
+    to host order
+  - `arp_target_ip` is the IP address whose MAC address is needed on the
+    outgoing Ethernet link
 - Decrement TTL by one.
 - Recompute IPv4 header checksum.
-- Look up target IP in `router->arp_cache`.
+- Look up `arp_target_ip` in `router->arp_cache`.
 - If ARP cache hit:
-  - transmit the existing IPv4 packet through the route's egress interface with
-    `ethernet_send`
+  - `arp_cache_lookup` writes the resolved destination MAC into a local
+    `uint8_t dst_mac[6]`
+  - call `ethernet_send(router->sim, route->iface, dst_mac, ETHERTYPE_IPV4,
+    pkt)`
   - return Ethernet send result
 - If ARP cache miss:
-  - send ARP request for the target IP on the route's egress interface
-  - enqueue the packet in `router->arp_cache` pending queue using target,
-    original source IP, original destination IP, protocol, egress interface,
-    and packet
+  - send ARP request for `arp_target_ip` on the route's egress interface
+  - if ARP request fails, free packet and return `-1`
+  - call `arp_pending_enqueue(&router->arp_cache, route->iface,
+    arp_target_ip, ETHERTYPE_IPV4, pkt)`
   - if enqueue succeeds, return `0`
   - if enqueue fails, free packet and return `-1`
 
@@ -433,6 +489,10 @@ Current ARP helper note: `arp_send_request` currently expects target IP in
 network order in existing call sites, while `arp_pending_enqueue` stores target
 IP in host order. Router must follow each API's contract exactly at the call
 site.
+
+ARP pending entries store already-formed layer-3 packets. When ARP later learns
+the MAC address, `arp_pending_flush` sends the queued packet with
+`ethernet_send`, so Router must not call `ip_send` for forwarded packets.
 
 ## Flow Charts
 
@@ -458,7 +518,7 @@ router_add_interface(router, iface)
   +-- reject NULL/full inputs
   +-- device_add_interface(&router->base, iface)
   +-- interface_set_arp_cache(iface, &router->arp_cache)
-  +-- bind receive path to router_receive/router
+  +-- interface_set_rx_handler(iface, router_rx_shim, router)
   +-- return 0
 ```
 
@@ -467,25 +527,31 @@ router_add_interface(router, iface)
 ```text
 router_receive(router, in_iface, pkt)
   |
-  +-- validate IPv4 packet
+  +-- ip_validate_header(pkt)
+  |     fail: rx_errors++, free pkt, return -1
+  |
   +-- ttl <= 1?
-  |     drop, rx_dropped++, return -1
+  |     icmp_send_time_exceeded(router->sim, in_iface, pkt)
+  |     rx_dropped++, free pkt, return -1
   |
   +-- route_table_lookup(dst_ip)
-  |     miss: drop, rx_dropped++, return -1
+  |     miss:
+  |       icmp_send_unreach_net(router->sim, in_iface, pkt)
+  |       rx_dropped++, free pkt, return -1
   |
-  +-- target_ip = route.next_hop != 0 ? route.next_hop : dst_ip
+  +-- arp_target_ip = route.next_hop != 0 ? route.next_hop : dst_ip
   +-- ttl--
   +-- recompute checksum
   |
-  +-- arp_cache_lookup(target_ip)
+  +-- arp_cache_lookup(arp_target_ip, dst_mac)
         |
         +-- hit:
-        |     ethernet_send(egress_iface, dst_mac, IPv4 packet)
+        |     ethernet_send(router->sim, route->iface, dst_mac,
+        |                   ETHERTYPE_IPV4, pkt)
         |
         +-- miss:
-              arp_send_request
-              arp_pending_enqueue
+              arp_send_request for arp_target_ip
+              arp_pending_enqueue(... ETHERTYPE_IPV4, pkt)
               return 0
 ```
 

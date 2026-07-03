@@ -67,6 +67,37 @@ The current implementation quotes:
 20 bytes original IPv4 header + min(orig payload length, 8)
 ```
 
+### Router TTL Expiration Uses ICMP
+
+Every IPv4 router hop decrements TTL before forwarding a packet. If the packet
+arrives with TTL `0` or `1`, forwarding would leave no remaining TTL. The router
+must drop the packet instead of forwarding it.
+
+That drop is not a silent drop in real IPv4 behavior. The router reports it to
+the original sender with ICMP Time Exceeded:
+
+```text
+ICMP type = 11  Time Exceeded
+ICMP code = 0   TTL expired in transit
+```
+
+In this simulator, the router forwarding path owns the TTL decision. ICMP owns
+the construction of the Time Exceeded message. The intended relationship is:
+
+```text
+router forwarding path
+  |
+  +-- sees TTL would expire
+  |
+  +-- drops original packet from forwarding path
+  |
+  +-- calls icmp_send_time_exceeded(sim, ingress_iface, original_packet)
+```
+
+The ICMP module must not decrement TTL itself and must not decide whether a
+packet should be forwarded. It only builds and sends the ICMP error when the
+router, IP, or another network-layer owner asks for that error.
+
 ### Do Not Send Errors About Errors
 
 ICMP should not send an ICMP error in response to an ICMP error. Otherwise error
@@ -107,7 +138,7 @@ It provides:
 - ICMP receive handler for IP dispatch
 - echo request sender
 - echo reply sender
-- time exceeded sender
+- time exceeded sender for router TTL expiration
 - destination unreachable senders
 - fragmentation-needed sender
 - ICMP checksum helper
@@ -121,6 +152,8 @@ It does not:
 - track ping waiters
 - implement all ICMP types/codes
 - generate IP-layer errors automatically
+- decrement router TTL
+- decide whether a router should forward or drop a packet
 
 ## Architecture Boundary
 
@@ -130,6 +163,8 @@ It does not:
 | Parse ICMP type/code | ICMP |
 | Build Echo Request/Reply | ICMP |
 | Build ICMP error payloads | ICMP |
+| Detect TTL expiration during forwarding | Router |
+| Send Time Exceeded after TTL expiration | ICMP helper called by Router |
 | Register protocol number 1 | IP stack owner |
 | Validate and strip IPv4 header | IP |
 | Choose source interface and ARP resolution | IP output |
@@ -205,9 +240,10 @@ freed by ICMP.
 `icmp_send_error` allocates a new error packet. If `ip_output` returns `-1`, it
 frees that packet. If `ip_output` returns `0` or positive, it does not free it.
 
-Current project caveat: `ip_output` may return `0` because a packet was queued
-for ARP pending. Direct-send lower layers currently have broader packet
-ownership gaps documented in IP/Ethernet specs.
+Current project caveat: `ip_output` may return `0` because it prepended an IPv4
+header and queued the complete IPv4 packet for ARP pending. Direct-send lower
+layers currently have broader packet ownership gaps documented in IP/Ethernet
+specs.
 
 ICMP error helpers read `orig_pkt`; they do not free it.
 
@@ -257,6 +293,14 @@ uint16_t icmp_checksum(const void *data, size_t len);
 ```
 
 ## Function Behavior
+
+Function behavior is an implementation contract. For simple functions, the
+required-behavior list is written in execution order unless the text explicitly
+says order does not matter. For non-trivial functions, especially functions with
+ownership transfer, queueing, lookup, selection, state-machine transitions, or
+packet forwarding, split the section into behavior summary, implementation
+order, and postconditions so the coder does not have to guess.
+
 
 ### `icmp_receive`
 
@@ -439,6 +483,16 @@ Each public helper calls `icmp_send_error` with fixed type/code:
 | `icmp_send_unreach_port` | `3` | `3` | none |
 | `icmp_send_frag_needed` | `3` | `4` | stores next-hop MTU in `seq` |
 
+`icmp_send_time_exceeded` is the public helper the router forwarding path should
+call when TTL expires in transit. The caller passes the ingress interface because
+that interface gives ICMP a local source address for the error response. The
+helper reads the original IPv4 source address from `orig_pkt` and sends the
+error back to that source through `ip_output`.
+
+`icmp_send_time_exceeded` does not free `orig_pkt`. The router forwarding path
+that detected TTL expiration remains responsible for the original packet's
+lifetime after the helper returns.
+
 ### `icmp_checksum`
 
 Required behavior:
@@ -530,6 +584,26 @@ icmp_send_error(sim, iface, orig_pkt, type, code, mtu)
   |
   +-- ip_output back to original source
 ```
+
+### Router TTL Expiration Caller
+
+```text
+router_forward_packet(sim, ingress_iface, pkt)
+  |
+  +-- read IPv4 TTL
+  |
+  +-- TTL <= 1:
+  |     call icmp_send_time_exceeded(sim, ingress_iface, pkt)
+  |     drop/free pkt in router forwarding path
+  |     do not forward pkt
+  |
+  +-- TTL > 1:
+        decrement TTL
+        continue route lookup and forwarding
+```
+
+This flow belongs in the router module, but it is documented here because it is
+the main caller use case for `icmp_send_time_exceeded`.
 
 ## ACSL Contracts
 
@@ -702,6 +776,13 @@ Additional required proof/test property:
 - Error packet quotes original IPv4 header plus up to first 8 payload bytes.
 - ICMP errors in response to ICMP errors are suppressed with return `0`.
 - Fragmentation-needed stores `next_hop_mtu` in network byte order.
+- Time Exceeded uses type `ICMP_TIME_EXCEEDED` and code
+  `ICMP_CODE_TTL_EXCEEDED`.
+- Time Exceeded sends the error to the original IPv4 source address.
+- Time Exceeded uses the caller-provided interface address as the ICMP source
+  address.
+- Time Exceeded does not free `orig_pkt`; the forwarding caller owns the
+  original packet after the helper returns.
 
 ### `icmp_checksum`
 
@@ -769,6 +850,11 @@ Minimum KLEVA tests:
 35. Error helper quotes at most first 8 bytes of original payload.
 36. Fragmentation-needed stores MTU in `seq`.
 37. Error helper frees error packet on `ip_output` failure.
+38. Time Exceeded helper builds type `11`, code `0`.
+39. Time Exceeded helper sends the error to the original IPv4 source.
+40. Time Exceeded helper does not free the original packet.
+41. Router TTL-expiration tests call `icmp_send_time_exceeded` from the TTL
+    expired branch once the router module wires the helper in.
 
 ## Common Mistakes
 
@@ -776,6 +862,9 @@ Minimum KLEVA tests:
 - Do not include Ethernet or ARP logic in ICMP.
 - Do not compute ICMP checksum with an IPv4 pseudo-header.
 - Do not send ICMP errors in response to ICMP errors.
+- Do not forward a router packet whose TTL has expired; the router must call
+  `icmp_send_time_exceeded` when that helper is available.
+- Do not put TTL decrement logic inside ICMP.
 - Do not forget that Echo Reply consumes the request packet.
 - Do not assume `ip_output` positive-only success; `0` can mean ARP pending.
 - Do not increment `rx_dropped` for supported ICMP messages that are consumed.

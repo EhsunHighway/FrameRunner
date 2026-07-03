@@ -10,17 +10,95 @@ and tested without guessing.
 
 Every numbered spec uses this structure:
 
-1. Concepts First
-2. Purpose
-3. Architecture Boundary
-4. Data Model
-5. Ownership And Lifetime
-6. Public API
-7. Function Behavior
-8. Flow Charts
-9. ACSL Contracts
-10. KLEVA Verification Plan
-11. Common Mistakes
+1. Module header: files, status, dependencies
+2. Concepts First
+3. Purpose
+4. Architecture Boundary
+5. Data Model
+6. Ownership And Lifetime
+7. Public API
+8. Function Behavior
+9. Flow Charts
+10. ACSL Contracts
+11. KLEVA Verification Plan
+12. Common Mistakes
+
+### Concepts First
+
+This section must teach the module and the networking or simulator concept
+clearly enough that implementation words have meaning. It should define the
+important vocabulary, explain why the module exists, and name the real-world
+idea being simplified when there is one.
+
+Good examples:
+
+- ARP cache explains learned mappings and pending packets.
+- Route table explains RIB, FIB, LPM, administrative distance, and metric.
+- Host explains per-host protocol state and context pointers.
+
+Avoid vague concept sections that only restate function names.
+
+### Function Behavior Format
+
+Function behavior is the implementation contract. It is not only a behavior
+summary.
+
+For simple functions, a required-behavior list is acceptable when the order is
+obvious and the function has no tricky ownership, state-machine, lookup, or
+selection logic.
+
+For non-trivial functions, use this structure:
+
+```text
+Behavior summary:
+
+Implementation order:
+
+Postconditions:
+```
+
+Definitions:
+
+- **Behavior summary** says what the function accomplishes.
+- **Implementation order** tells the coder what to do in execution order.
+- **Postconditions** say what must be true after the function returns.
+
+When order matters, preserve order. Do not put a step early in the prose if it
+must happen later in code. If order does not matter, say that explicitly.
+
+Use exact names for important values and fields. Prefer:
+
+```text
+Compare the candidate RIB entry (`rib_entry`, table->rib[i]) against the
+current selected RIB entry (`table->rib[matching_fib->rib_index]`).
+```
+
+Avoid vague wording like:
+
+```text
+compare this entry against that entry
+use this to find that
+prepare the context
+deliver the packet
+```
+
+unless the sentence immediately names the exact object, field, function, or
+postcondition.
+
+### ACSL And KLEVA
+
+ACSL contracts belong in headers. They should describe checkable shape,
+ownership, counter, and state properties. Do not write impressive-looking
+predicates that do not correspond to a real invariant.
+
+KLEVA plans should list concrete test/proof properties, especially for:
+
+- NULL and malformed inputs
+- ownership transfer
+- counter updates
+- byte order
+- queue full/empty cases
+- packet free/send/queued paths
 
 For implemented modules, the spec should match the current `src/` behavior.
 

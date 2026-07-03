@@ -305,6 +305,14 @@ own send APIs.
 
 ## Function Behavior
 
+Function behavior is an implementation contract. For simple functions, the
+required-behavior list is written in execution order unless the text explicitly
+says order does not matter. For non-trivial functions, especially functions with
+ownership transfer, queueing, lookup, selection, state-machine transitions, or
+packet forwarding, split the section into behavior summary, implementation
+order, and postconditions so the coder does not have to guess.
+
+
 ### `host_create`
 
 Required behavior:
@@ -486,8 +494,9 @@ host_send_ip(host, src_ip, dst_ip, protocol, payload)
         |
         +-- IP chooses source interface
         +-- IP checks subnet reachability
-        +-- ARP cache hit: send IP packet
-        +-- ARP cache miss: send ARP request and enqueue pending payload
+        +-- IP prepends IPv4 header
+        +-- ARP cache hit: send complete IPv4 packet
+        +-- ARP cache miss: send ARP request and enqueue complete IPv4 packet
 ```
 
 ## ACSL Contracts

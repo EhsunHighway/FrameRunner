@@ -11,19 +11,17 @@ typedef struct Interface Interface;
 typedef struct Packet Packet;
 
 typedef struct ArpCacheEntry {
-    uint32_t        ip_addr;              // IPv4 address (network byte order)
+    uint32_t        ip_addr;              // IPv4 address key, host order
     uint8_t         mac_addr[6];          // MAC address
     uint64_t        timestamp;            // last updated time (sim time ms)
     int             valid;                // 1 if entry is valid, 0 if expired/invalid
 } ArpCacheEntry;
 
 typedef struct ArpPendingPacket {
-    uint32_t          target_ip;   /* Host-order next-hop IP waiting for MAC. */
-    uint32_t          src_ip;      /* Host-order IPv4 source for ip_send. */
-    uint32_t          dst_ip;      /* Host-order IPv4 destination for ip_send. */
-    uint8_t           protocol;    /* IPv4 protocol byte. */
+    uint32_t          target_ip;   /* Host-order IP waiting for MAC. */
+    uint16_t          ethertype;   /* Ethernet type for queued L3 packet. */
     struct Interface *iface;       /* Borrowed outgoing interface. */
-    struct Packet    *payload;     /* Owned queued L4 payload. */
+    struct Packet    *packet;      /* Owned queued complete L3 packet. */
     int               valid;
 } ArpPendingPacket;
 
@@ -50,7 +48,7 @@ typedef struct ArpCache {
         ensures cache->pending_count == 0;
         ensures \forall integer i; 0 <= i < 32 ==> cache->pending[i].valid == 0;
         ensures \forall integer i; 0 <= i < 32 ==> cache->pending[i].iface == \null;
-        ensures \forall integer i; 0 <= i < 32 ==> cache->pending[i].payload == \null;
+        ensures \forall integer i; 0 <= i < 32 ==> cache->pending[i].packet == \null;
 
     complete behaviors;
     disjoint behaviors;
@@ -90,21 +88,19 @@ int  arp_cache_lookup(const ArpCache *cache,
 
 /*@
     behavior null:
-        assumes cache == \null || iface == \null || payload == \null || target_ip == 0;
+        assumes cache == \null || iface == \null || packet == \null || target_ip == 0;
         assigns \nothing;
         ensures \result == -1;
     behavior valid:
-        assumes \valid(cache) && \valid(iface) && \valid(payload) && target_ip != 0;
+        assumes \valid(cache) && \valid(iface) && \valid(packet) && target_ip != 0;
         assigns cache->pending[0..31], cache->pending_count;
         ensures \result == 0 || \result == -1;
 */
 int  arp_pending_enqueue(ArpCache  *cache,
                          Interface *iface,
                          uint32_t   target_ip,
-                         uint32_t   src_ip,
-                         uint32_t   dst_ip,
-                         uint8_t    protocol,
-                         Packet    *payload);
+                         uint16_t   ethertype,
+                         Packet    *packet);
 
 /*@
     behavior null:

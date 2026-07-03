@@ -1,6 +1,6 @@
 #include <string.h>
 #include "../network/packet.h"
-#include "ip.h"
+#include "ethernet.h"
 #include "arp_cache.h"
 
 #define ARP_CACHE_TIMEOUT_MS 300000
@@ -63,22 +63,18 @@ int arp_cache_lookup(const ArpCache *cache,
 int arp_pending_enqueue(ArpCache  *cache,
                         Interface *iface,
                         uint32_t   target_ip,
-                        uint32_t   src_ip,
-                        uint32_t   dst_ip,
-                        uint8_t    protocol,
-                        Packet    *payload) {
-    if (!cache || !iface || !target_ip || !payload) {
+                        uint16_t   ethertype,
+                        Packet    *packet) {
+    if (!cache || !iface || !target_ip || !packet) {
         return -1;
     }
 
     for (int i = 0; i < ARP_MAX_PENDING_PACKETS; i++) {
         if (cache->pending[i].valid == 0) {
             cache->pending[i].target_ip = target_ip;
-            cache->pending[i].src_ip    = src_ip;
-            cache->pending[i].dst_ip    = dst_ip;
-            cache->pending[i].protocol  = protocol;
+            cache->pending[i].ethertype = ethertype;
             cache->pending[i].iface     = iface;
-            cache->pending[i].payload   = payload;
+            cache->pending[i].packet    = packet;
             cache->pending[i].valid     = 1;
             cache->pending_count++;
             return 0;
@@ -103,30 +99,26 @@ int arp_pending_flush(Simulator    *sim,
             continue;
         }
 
-        Packet    *payload  = pending->payload;
+        Packet    *packet   = pending->packet;
         Interface *iface    = pending->iface;
-        uint32_t   src_ip   = pending->src_ip;
-        uint32_t   dst_ip   = pending->dst_ip;
-        uint8_t    protocol = pending->protocol;
+        uint16_t   ethertype = pending->ethertype;
 
         pending->valid   = 0;
-        pending->payload = NULL;
+        pending->packet  = NULL;
         pending->iface   = NULL;
         if (cache->pending_count > 0) {
             cache->pending_count--;
         }
 
-        if (iface && payload &&
-            ip_send(sim,
-                    iface,
-                    (uint8_t *)mac_addr,
-                    src_ip,
-                    dst_ip,
-                    protocol,
-                    payload) >= 0) {
+        if (iface && packet &&
+            ethernet_send(sim,
+                          iface,
+                          mac_addr,
+                          ethertype,
+                          packet) >= 0) {
             sent++;
         } else {
-            packet_free(payload);
+            packet_free(packet);
         }
     }
 

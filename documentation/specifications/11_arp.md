@@ -142,7 +142,7 @@ It does not:
 - allocate or free ARP cache storage
 - own pending packet queues
 - parse Ethernet headers
-- send IP packets directly except through `arp_pending_flush`
+- rebuild IP packets while flushing ARP pending entries
 - decide route selection
 - implement gratuitous ARP
 - implement ARP probes
@@ -158,8 +158,8 @@ It does not:
 | Send ARP payload over Ethernet | ARP through Ethernet |
 | Store learned mappings | ARP cache |
 | Own ARP cache storage | Host/Router |
-| Queue unresolved IP payloads | ARP cache pending queue |
-| Retry pending payloads after mapping learned | ARP cache via `ip_send` |
+| Queue unresolved L3 packets | ARP cache pending queue |
+| Retry pending packets after mapping learned | ARP cache via `ethernet_send` |
 | Strip Ethernet header and deliver ARP payload | Ethernet/interface receive path |
 
 ARP depends on Ethernet for frame transmission and on ARP cache for learned
@@ -253,6 +253,14 @@ int  arp_send_reply(Simulator *sim,
 ```
 
 ## Function Behavior
+
+Function behavior is an implementation contract. For simple functions, the
+required-behavior list is written in execution order unless the text explicitly
+says order does not matter. For non-trivial functions, especially functions with
+ownership transfer, queueing, lookup, selection, state-machine transitions, or
+packet forwarding, split the section into behavior summary, implementation
+order, and postconditions so the coder does not have to guess.
+
 
 ### `arp_init`
 

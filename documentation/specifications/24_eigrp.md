@@ -357,6 +357,14 @@ the router control-plane dispatch mechanism.
 
 ## Function Behavior
 
+Function behavior is an implementation contract. For simple functions, the
+required-behavior list is written in execution order unless the text explicitly
+says order does not matter. For non-trivial functions, especially functions with
+ownership transfer, queueing, lookup, selection, state-machine transitions, or
+packet forwarding, split the section into behavior summary, implementation
+order, and postconditions so the coder does not have to guess.
+
+
 ### `eigrp_init`
 
 Required behavior:

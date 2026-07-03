@@ -78,22 +78,22 @@ The current implementation uses linear scans over 256 slots.
 
 ### Pending Packets
 
-When IP wants to send a packet but the MAC address is unknown, the payload must
-wait somewhere while ARP resolution happens.
+When IP or Router wants to send a packet but the MAC address is unknown, the
+already-formed layer-3 packet must wait somewhere while ARP resolution happens.
 
 That waiting area is the pending queue:
 
 ```text
-target_ip -> queued payload + metadata needed to call ip_send later
+target_ip -> queued L3 packet + ethertype + outgoing interface
 ```
 
-After ARP learns the MAC address for `target_ip`, `arp_pending_flush` retries
-the queued payloads by calling `ip_send`.
+After ARP learns the MAC address for `target_ip`, `arp_pending_flush` sends the
+queued packets by calling `ethernet_send`.
 
 ### Byte Order
 
-Pending queue IP fields are host order because they are later passed directly to
-`ip_send`.
+Pending `target_ip` is host order. It is the IP address whose MAC address is
+being resolved. Pending packets already contain their network-layer headers.
 
 For cache entries, the implementation stores the integer value exactly as passed
 to `arp_cache_add` and compares it exactly in `arp_cache_lookup`. In the current
@@ -132,15 +132,16 @@ It does not:
 | --- | --- |
 | Own ARP cache storage | Host/Router |
 | Store learned IP-to-MAC entries | ARP cache |
-| Store unresolved outbound payloads | ARP cache pending queue |
+| Store unresolved outbound L3 packets | ARP cache pending queue |
 | Parse ARP packets | ARP protocol |
 | Add learned mappings after ARP receive | ARP protocol calling cache |
 | Look up next-hop MAC before IP send | IP path calling cache |
-| Retry queued payloads after resolution | ARP cache via `ip_send` |
+| Retry queued packets after resolution | ARP cache via `ethernet_send` |
 | Own borrowed interface pointers | Host/Router/Device, not ARP cache |
-| Own pending payload after enqueue success | ARP pending queue |
+| Own pending packet after enqueue success | ARP pending queue |
 
-`arp_cache.c` includes `ip.h` because `arp_pending_flush` calls `ip_send`.
+`arp_cache.c` includes `ethernet.h` because `arp_pending_flush` calls
+`ethernet_send`.
 
 ## Data Model
 
@@ -176,11 +177,9 @@ Field meanings:
 ```c
 typedef struct ArpPendingPacket {
     uint32_t   target_ip;
-    uint32_t   src_ip;
-    uint32_t   dst_ip;
-    uint8_t    protocol;
+    uint16_t   ethertype;
     Interface *iface;
-    Packet    *payload;
+    Packet    *packet;
     int        valid;
 } ArpPendingPacket;
 ```
@@ -189,12 +188,10 @@ Field meanings:
 
 | Field | Meaning |
 | --- | --- |
-| `target_ip` | Host-order next-hop IP waiting for MAC resolution. |
-| `src_ip` | Host-order source IP for later `ip_send`. |
-| `dst_ip` | Host-order destination IP for later `ip_send`. |
-| `protocol` | IPv4 protocol byte for later `ip_send`. |
+| `target_ip` | Host-order IP waiting for MAC resolution. |
+| `ethertype` | Ethernet type used when flushing the queued packet. |
 | `iface` | Borrowed outgoing interface pointer. |
-| `payload` | Owned queued payload after successful enqueue. |
+| `packet` | Owned queued complete L3 packet after successful enqueue. |
 | `valid` | `1` means this pending slot is active. |
 
 ### `ArpCache`
@@ -226,7 +223,7 @@ After `arp_cache_init(cache)` on a valid cache:
 - `cache->pending_count == 0`
 - every pending entry has `valid == 0`
 - every pending entry has `iface == NULL`
-- every pending entry has `payload == NULL`
+- every pending entry has `packet == NULL`
 
 The current implementation reaches this state with:
 
@@ -240,19 +237,21 @@ memset(cache, 0, sizeof(*cache));
 
 The ARP cache module does not allocate or free `ArpCache`.
 
-`arp_pending_enqueue` transfers payload ownership only on success:
+`arp_pending_enqueue` transfers packet ownership only on success:
 
-- return `0`: pending queue owns `payload`
-- return `-1`: caller still owns `payload`
+- return `0`: pending queue owns `packet`
+- return `-1`: caller still owns `packet`
 
 The pending queue never owns `iface`.
 
-`arp_pending_flush` clears matching pending slots before calling `ip_send`.
+`arp_pending_flush` clears matching pending slots before calling
+`ethernet_send`.
 
-If `ip_send` succeeds, ownership of the payload has moved into the send path.
+If `ethernet_send` succeeds, ownership of the packet has moved into the send
+path.
 
-If `ip_send` fails or the pending slot lacks usable `iface`/`payload`, flush
-frees the payload with `packet_free`.
+If `ethernet_send` fails or the pending slot lacks usable `iface`/`packet`,
+flush frees the packet with `packet_free`.
 
 ## Public API
 
@@ -271,10 +270,8 @@ int  arp_cache_lookup(const ArpCache *cache,
 int  arp_pending_enqueue(ArpCache  *cache,
                          Interface *iface,
                          uint32_t   target_ip,
-                         uint32_t   src_ip,
-                         uint32_t   dst_ip,
-                         uint8_t    protocol,
-                         Packet    *payload);
+                         uint16_t   ethertype,
+                         Packet    *packet);
 
 int  arp_pending_flush(Simulator    *sim,
                        ArpCache     *cache,
@@ -285,6 +282,14 @@ void arp_cache_cleanup(ArpCache *cache, uint64_t current_time);
 ```
 
 ## Function Behavior
+
+Function behavior is an implementation contract. For simple functions, the
+required-behavior list is written in execution order unless the text explicitly
+says order does not matter. For non-trivial functions, especially functions with
+ownership transfer, queueing, lookup, selection, state-machine transitions, or
+packet forwarding, split the section into behavior summary, implementation
+order, and postconditions so the coder does not have to guess.
+
 
 ### `arp_cache_init`
 
@@ -343,15 +348,13 @@ Required behavior:
 - If `cache == NULL`, return `-1`.
 - If `iface == NULL`, return `-1`.
 - If `target_ip == 0`, return `-1`.
-- If `payload == NULL`, return `-1`.
+- If `packet == NULL`, return `-1`.
 - Search all 32 pending slots for the first invalid slot.
 - If found:
   - store `target_ip`
-  - store `src_ip`
-  - store `dst_ip`
-  - store `protocol`
+  - store `ethertype`
   - store borrowed `iface`
-  - store owned `payload`
+  - store owned `packet`
   - set `valid = 1`
   - increment `pending_count`
   - return `0`
@@ -368,17 +371,17 @@ Required behavior:
 - Initialize `sent = 0`.
 - Scan all 32 pending slots.
 - For each valid pending slot whose `target_ip` matches:
-  - copy `payload`, `iface`, `src_ip`, `dst_ip`, and `protocol` into locals
+  - copy `packet`, `iface`, and `ethertype` into locals
   - set pending `valid = 0`
-  - set pending `payload = NULL`
+  - set pending `packet = NULL`
   - set pending `iface = NULL`
   - decrement `pending_count` if it is positive
-  - if `iface != NULL`, `payload != NULL`, and `ip_send(...) >= 0`, increment
-    `sent`
-  - otherwise call `packet_free(payload)`
+  - if `iface != NULL`, `packet != NULL`, and `ethernet_send(...) >= 0`,
+    increment `sent`
+  - otherwise call `packet_free(packet)`
 - Return `sent`.
 
-`mac_addr` is passed to `ip_send` as the destination MAC.
+`mac_addr` is passed to `ethernet_send` as the destination MAC.
 
 ### `arp_cache_cleanup`
 
@@ -406,15 +409,15 @@ The current code does not guard against unsigned timestamp wraparound.
 ### IP Send Miss
 
 ```text
-IP wants to send payload
+IP or Router wants to send an L3 packet
   |
   +-- arp_cache_lookup(cache, target_ip, mac)
         |
         +-- hit:
-        |     send immediately through Ethernet/IP path
+        |     send immediately through Ethernet path
         |
         +-- miss:
-              queue payload with arp_pending_enqueue
+              queue complete L3 packet with arp_pending_enqueue
               send ARP request elsewhere
 ```
 
@@ -429,9 +432,9 @@ ARP receive path accepts reply
   |
   +-- arp_pending_flush(sim, cache, sender_ip, sender_mac)
         |
-        +-- for each matching pending payload:
+        +-- for each matching pending packet:
               clear pending slot
-              call ip_send(...)
+              call ethernet_send(...)
 ```
 
 ### Initialize Cache
@@ -474,11 +477,11 @@ The contracts belong in `arp_cache.h`. Use literal bounds for KLEVA/EVA:
         \forall integer i; 0 <= i && i < 32 ==>
             ((cache->pending[i].valid == 0 &&
               cache->pending[i].iface == \null &&
-              cache->pending[i].payload == \null) ||
+              cache->pending[i].packet == \null) ||
              (cache->pending[i].valid == 1 &&
               cache->pending[i].target_ip != 0 &&
               cache->pending[i].iface != \null &&
-              cache->pending[i].payload != \null));
+              cache->pending[i].packet != \null));
 
     predicate arp_cache_well_formed(ArpCache *cache) =
         \valid(cache) &&
@@ -512,7 +515,7 @@ The contracts belong in `arp_cache.h`. Use literal bounds for KLEVA/EVA:
         ensures \forall integer i; 0 <= i && i < 32 ==>
                 cache->pending[i].iface == \null;
         ensures \forall integer i; 0 <= i && i < 32 ==>
-                cache->pending[i].payload == \null;
+                cache->pending[i].packet == \null;
         ensures arp_cache_well_formed(cache);
 
     complete behaviors;
@@ -591,14 +594,14 @@ Additional required proof/test property:
 /*@
     behavior bad_input:
         assumes cache == \null || iface == \null ||
-                payload == \null || target_ip == 0;
+                packet == \null || target_ip == 0;
         assigns \nothing;
         ensures \result == -1;
 
     behavior valid:
         assumes arp_cache_well_formed(cache);
         assumes \valid(iface);
-        assumes packet_layout(payload);
+        assumes packet_layout(packet);
         assumes target_ip != 0;
         assigns cache->pending[0 .. 31],
                 cache->pending_count;
@@ -615,16 +618,15 @@ Additional required proof/test property:
 int arp_pending_enqueue(ArpCache *cache,
                         Interface *iface,
                         uint32_t target_ip,
-                        uint32_t src_ip,
-                        uint32_t dst_ip,
-                        uint8_t protocol,
-                        Packet *payload);
+                        uint16_t ethertype,
+                        Packet *packet);
 ```
 
 Additional required proof/test property:
 
-- On success, one pending slot stores the exact metadata and payload pointer.
-- On failure, payload ownership remains with the caller.
+- On success, one pending slot stores the exact target, ethertype, interface,
+  and packet pointer.
+- On failure, packet ownership remains with the caller.
 
 ### `arp_pending_flush`
 
@@ -696,7 +698,7 @@ Minimum KLEVA tests:
 4. `arp_cache_init(valid)` sets `pending_count == 0`.
 5. `arp_cache_init(valid)` clears all 32 pending valid bits.
 6. `arp_cache_init(valid)` clears dirty pending `iface` pointers.
-7. `arp_cache_init(valid)` clears dirty pending `payload` pointers.
+7. `arp_cache_init(valid)` clears dirty pending `packet` pointers.
 8. `arp_cache_add(NULL, ...)` is a no-op.
 9. `arp_cache_add(cache, 0, ...)` is a no-op.
 10. `arp_cache_add` inserts a new entry.
@@ -709,17 +711,17 @@ Minimum KLEVA tests:
 17. Lookup hit returns `0`.
 18. Lookup hit copies all six MAC bytes.
 19. Lookup miss returns `-1`.
-20. `arp_pending_enqueue` rejects NULL cache, interface, payload, or zero
+20. `arp_pending_enqueue` rejects NULL cache, interface, packet, or zero
    target.
-21. Pending enqueue success stores all metadata.
+21. Pending enqueue success stores target, ethertype, interface, and packet.
 22. Pending enqueue success increments `pending_count`.
-23. Pending enqueue failure leaves payload ownership with caller.
+23. Pending enqueue failure leaves packet ownership with caller.
 24. Pending enqueue full queue returns `-1`.
 25. `arp_pending_flush` rejects NULL/zero inputs with return `0`.
 26. Pending flush clears all matching target slots.
 27. Pending flush decrements `pending_count` for cleared slots.
-28. Pending flush calls `ip_send` for valid queued payloads.
-29. Pending flush frees payload when handoff fails.
+28. Pending flush calls `ethernet_send` for valid queued packets.
+29. Pending flush frees packet when handoff fails.
 30. Cleanup rejects NULL cache.
 31. Cleanup expires stale entries.
 32. Cleanup leaves fresh entries valid.
@@ -731,8 +733,8 @@ Minimum KLEVA tests:
   counts and invalid slots.
 - Do not let Interface own or free the ARP cache.
 - Do not let ARP protocol own or allocate the cache object.
-- Do not free pending payload after successful enqueue; the queue owns it.
-- Do not forget to clear stale pending `iface` and `payload` pointers in init
+- Do not free pending packet after successful enqueue; the queue owns it.
+- Do not forget to clear stale pending `iface` and `packet` pointers in init
   and flush.
 - Do not scan only `count`; entries can have holes.
 - Do not use the stale `ArpCacheEntry.ip_addr` header comment as the design

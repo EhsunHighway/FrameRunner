@@ -385,6 +385,14 @@ should call the same `isis_receive` after identifying IS-IS ethertype/SNAP.
 
 ## Function Behavior
 
+Function behavior is an implementation contract. For simple functions, the
+required-behavior list is written in execution order unless the text explicitly
+says order does not matter. For non-trivial functions, especially functions with
+ownership transfer, queueing, lookup, selection, state-machine transitions, or
+packet forwarding, split the section into behavior summary, implementation
+order, and postconditions so the coder does not have to guess.
+
+
 ### `isis_init`
 
 Required behavior:

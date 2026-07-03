@@ -519,6 +519,14 @@ directly.
 
 ## Function Behavior
 
+Function behavior is an implementation contract. For simple functions, the
+required-behavior list is written in execution order unless the text explicitly
+says order does not matter. For non-trivial functions, especially functions with
+ownership transfer, queueing, lookup, selection, state-machine transitions, or
+packet forwarding, split the section into behavior summary, implementation
+order, and postconditions so the coder does not have to guess.
+
+
 ### `route_table_init`
 
 Behavior summary:
@@ -657,20 +665,23 @@ Implementation order:
 7. If a matching FIB entry exists:
    - `matching_fib->rib_index` is the array index of the RIB entry that
      currently backs this FIB entry
-   - read the current RIB entry as `table->rib[matching_fib->rib_index]`
-   - compare this RIB entry against that current RIB entry
+   - read the current selected RIB entry as
+     `current = &table->rib[matching_fib->rib_index]`
+   - compare the candidate RIB entry `rib_entry` (`&table->rib[i]`) against
+     the current selected RIB entry `current`
    - lower administrative distance wins immediately
    - if administrative distance is equal, lower metric wins
    - if administrative distance and metric are both equal, lower sequence wins
-   - if this RIB entry wins, clear `selected` on the old RIB entry, replace the
-     FIB entry fields with this RIB entry's forwarding fields, set `rib_index`
-     to this RIB slot index, and set this RIB entry's `selected` field to `1`
+   - if the candidate RIB entry wins, set `current->selected = 0`, replace the
+     FIB entry fields with `rib_entry`'s forwarding fields, set
+     `matching_fib->rib_index = i`, and set `rib_entry->selected = 1`
    - after handling the matching FIB entry, move to the next RIB entry
 8. If no matching FIB entry exists:
    - scan all 256 FIB slots for the first invalid slot
-   - write one new FIB entry copied from this RIB entry into that invalid slot
-   - set the new FIB entry's `rib_index` to this RIB slot index
-   - set this RIB entry's `selected` field to `1`
+   - write one new FIB entry copied from the candidate RIB entry `rib_entry`
+     into that invalid slot
+   - set the new FIB entry's `rib_index` to the outer-loop RIB index `i`
+   - set `rib_entry->selected = 1`
    - increment `fib_count`
    - move to the next RIB entry
 9. Return `0`.

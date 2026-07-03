@@ -220,6 +220,41 @@ int  ip_output(Simulator *sim,
                 Packet   *payload);
 
 /*@
+    behavior null_or_short:
+        assumes pkt == \null || pkt->data == \null || pkt->len < IP_HDR_LEN;
+        assigns \nothing;
+        ensures \result == -1;
+
+    behavior bad_header:
+        assumes \valid(pkt);
+        assumes pkt->data != \null;
+        assumes pkt->len >= IP_HDR_LEN;
+        assumes \valid_read(pkt->data + (0 .. IP_HDR_LEN - 1));
+        assumes (((IpHeader *)pkt->data)->version_ihl >> 4) != IP_VERSION ||
+                (((IpHeader *)pkt->data)->version_ihl & 0x0F) !=
+                    (IP_HDR_LEN / 4) ||
+                ip_checksum((IpHeader *)pkt->data) != 0;
+        assigns \nothing;
+        ensures \result == -1;
+
+    behavior valid:
+        assumes \valid(pkt);
+        assumes pkt->data != \null;
+        assumes pkt->len >= IP_HDR_LEN;
+        assumes \valid_read(pkt->data + (0 .. IP_HDR_LEN - 1));
+        assumes ((IpHeader *)pkt->data)->version_ihl >> 4 == IP_VERSION;
+        assumes (((IpHeader *)pkt->data)->version_ihl & 0x0F) ==
+                (IP_HDR_LEN / 4);
+        assumes ip_checksum((IpHeader *)pkt->data) == 0;
+        assigns \nothing;
+        ensures \result == 0;
+
+    complete behaviors;
+    disjoint behaviors;
+*/
+int       ip_validate_header(Packet *pkt);
+
+/*@
     behavior null:
         assumes ip_hdr == \null;
         assigns \nothing;

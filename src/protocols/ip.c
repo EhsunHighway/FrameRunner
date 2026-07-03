@@ -31,6 +31,35 @@ static int ip_same_subnet(uint32_t a_host,
     return (a_host & mask) == (b_host & mask);
 }
 
+static int ip_prepend_header(uint32_t src_ip,
+                             uint32_t dst_ip,
+                             uint8_t  protocol,
+                             Packet  *payload) {
+    if (!payload) {
+        return -1;
+    }
+
+    IpHeader ip_hdr;
+    ip_hdr.version_ihl           = (IP_VERSION << 4) | (IP_HDR_LEN / 4);
+    ip_hdr.dscp_ecn              = 0;
+    ip_hdr.total_length          = ns_htons(IP_HDR_LEN + payload->len);
+    ip_hdr.identification        = 0;
+    ip_hdr.flags_fragment_offset = 0;
+    ip_hdr.ttl                   = IP_DEFAULT_TTL;
+    ip_hdr.protocol              = protocol;
+    ip_hdr.header_checksum       = 0;
+    ip_hdr.src_ip                = ns_htonl(src_ip);
+    ip_hdr.dst_ip                = ns_htonl(dst_ip);
+    ip_hdr.header_checksum       = ip_checksum(&ip_hdr);
+
+    if (packet_prepend(payload, &ip_hdr, sizeof(IpHeader)) == -1) {
+        return -1;
+    }
+
+    payload->layer = 3;
+    return 0;
+}
+
 static Interface *ip_find_source_iface(const Simulator *sim, uint32_t src_ip) {
     if (!sim || !sim->topo) {
         return NULL;
@@ -122,26 +151,19 @@ int  ip_receive(Interface *iface,
         return -1;
     }
 
-    IpHeader *ip_hdr = (IpHeader *)frame->data;
-    if (ip_hdr->version_ihl >> 4 != 4) {
+    if (ip_validate_header(frame) != 0) {
         iface->rx_errors++;
         packet_free(frame);
-        return -1; // Not IPv4
+        return -1;
     }
 
+    IpHeader *ip_hdr = (IpHeader *)frame->data;
     if (ip_hdr->ttl == 0) {
         iface->rx_dropped++;
         packet_free(frame);
         return -1; // TTL expired
     }
 
-    if (ip_checksum(ip_hdr) != 0) { 
-        iface->rx_errors++; 
-        packet_free(frame); 
-        return -1; 
-    }
-
-     // Verify checksum
     uint8_t    protocol = ip_hdr->protocol;
     iface->rx_bytes    += frame->len;
     IpStack   *stack    = (IpStack *)ctx;
@@ -175,23 +197,10 @@ int  ip_send(Simulator *sim,
         return -1;
     }
 
-    IpHeader ip_hdr;
-    ip_hdr.version_ihl           = (4 << 4) | (IP_HDR_LEN / 4);
-    ip_hdr.dscp_ecn              = 0;
-    ip_hdr.total_length          = ns_htons(IP_HDR_LEN + payload->len);
-    ip_hdr.identification        = 0;
-    ip_hdr.flags_fragment_offset = 0;
-    ip_hdr.ttl                   = IP_DEFAULT_TTL;
-    ip_hdr.protocol              = protocol;
-    ip_hdr.header_checksum       = 0;
-    ip_hdr.src_ip                = ns_htonl(src_ip);
-    ip_hdr.dst_ip                = ns_htonl(dst_ip);
-    ip_hdr.header_checksum       = ip_checksum(&ip_hdr);
-
-    if (packet_prepend(payload, &ip_hdr, sizeof(IpHeader)) == -1) {
+    if (ip_prepend_header(src_ip, dst_ip, protocol, payload) == -1) {
         return -1;
     }
-    payload->layer      = 3;
+
     iface->tx_bytes    += payload->len;
     iface->last_tx_time = simulator_now(sim);
     return ethernet_send(sim,
@@ -220,6 +229,10 @@ int ip_output(Simulator *sim,
         return -1;
     }
 
+    if (ip_prepend_header(src_ip, dst_ip, protocol, payload) == -1) {
+        return -1;
+    }
+
     uint8_t dst_mac[ETH_ALEN];
     if (arp_cache_lookup(iface->arp_cache, dst_ip, dst_mac) != 0) {
         if (arp_send_request(sim, iface, ns_htonl(dst_ip)) != 0) {
@@ -228,22 +241,20 @@ int ip_output(Simulator *sim,
         if (arp_pending_enqueue(iface->arp_cache,
                                 iface,
                                 dst_ip,
-                                src_ip,
-                                dst_ip,
-                                protocol,
+                                ETHERTYPE_IPV4,
                                 payload) != 0) {
             return -1;
         }
         return 0;
     }
 
-    return ip_send(sim,
-                   iface,
-                   dst_mac,
-                   src_ip,
-                   dst_ip,
-                   protocol,
-                   payload);
+    iface->tx_bytes    += payload->len;
+    iface->last_tx_time = simulator_now(sim);
+    return ethernet_send(sim,
+                         iface,
+                         dst_mac,
+                         ETHERTYPE_IPV4,
+                         payload);
 }
 
 /*
@@ -267,6 +278,27 @@ uint16_t  ip_checksum(IpHeader *ip_hdr) {
     }
 
     return ns_htons(~sum);
+}
+
+int  ip_validate_header(Packet *pkt) {
+    if (!pkt || !pkt->data || pkt->len < IP_HDR_LEN) {
+        return -1;
+    }
+
+    IpHeader *ip_hdr = (IpHeader *)pkt->data;
+    if ((ip_hdr->version_ihl >> 4) != IP_VERSION) {
+        return -1;
+    }
+
+    if ((ip_hdr->version_ihl & 0x0F) != (IP_HDR_LEN / 4)) {
+        return -1;
+    }
+
+    if (ip_checksum(ip_hdr) != 0) {
+        return -1;
+    }
+
+    return 0;
 }
 
 int  ip_is_local(Device *dev, uint32_t dst_ip) {
