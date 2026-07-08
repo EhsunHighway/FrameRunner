@@ -51,12 +51,13 @@ above it in the table. Numbers are sequential build order. Coverage targets:
 |----|---------------------|-----------------------------|------------------------------------|-----------------|------------------------|
 | 19 | Routing table       | `routing/route_table.c/h`   | device, ip                         | ✅ Done         | —                      |
 | 20 | Router (L3)         | `network/router.c/h`        | device, arp_cache, route_table, ip | ✅ Done         | —                      |
-| 21 | RIP                 | `routing/rip.c/h`           | route_table, router, scheduler     | ⬜ Not started  | —                      |
-| 22 | OSPF                | `routing/ospf.c/h`          | route_table, router, scheduler     | ⬜ Not started  | —                      |
-| 23 | BGP                 | `routing/bgp.c/h`           | route_table, router, scheduler     | ⬜ Not started  | —                      |
-| 24 | EIGRP               | `routing/eigrp.c/h`         | route_table, router, scheduler     | ⬜ Not started  | —                      |
-| 25 | IS-IS               | `routing/isis.c/h`          | route_table, router, scheduler     | ⬜ Not started  | —                      |
-| 26 | NAT / PAT           | `routing/nat.c/h`           | route_table, ip                    | ⬜ Not started  | —                      |
+| 21 | Static Route        | `routing/static_route.c/h`  | route_table, router, interface     | ✅ Done         | —                      |
+| 22 | RIP                 | `protocols/rip.c/h`         | route_table, router, scheduler     | ✅ Done         | —                      |
+| 23 | OSPF                | `protocols/ospf.c/h`        | route_table, router, scheduler     | ⬜ Not started  | —                      |
+| 24 | BGP                 | `protocols/bgp.c/h`         | route_table, router, scheduler     | ⬜ Not started  | —                      |
+| 25 | EIGRP               | `protocols/eigrp.c/h`       | route_table, router, scheduler     | ⬜ Not started  | —                      |
+| 26 | IS-IS               | `protocols/isis.c/h`        | route_table, router, scheduler     | ⬜ Not started  | —                      |
+| 27 | NAT / PAT           | `protocols/nat.c/h`         | route_table, ip                    | ⬜ Not started  | —                      |
 
 ---
 
@@ -64,9 +65,9 @@ above it in the table. Numbers are sequential build order. Coverage targets:
 
 | #  | Module              | File(s)                     | Depends On           | Status          | Tests (line / branch)  |
 |----|---------------------|-----------------------------|----------------------|-----------------|------------------------|
-| 27 | Topology renderer   | `display/topology.c/h`      | topology             | ⬜ Not started  | —                      |
-| 28 | Packet renderer     | `display/packet.c/h`        | packet, protocols    | ⬜ Not started  | —                      |
-| 29 | CLI / REPL          | `cli/cli.c/h`               | simulator, all       | ⬜ Not started  | —                      |
+| 28 | Topology renderer   | `display/topology.c/h`      | topology             | ⬜ Not started  | —                      |
+| 29 | Packet renderer     | `display/packet.c/h`        | packet, protocols    | ⬜ Not started  | —                      |
+| 30 | CLI / REPL          | `cli/cli.c/h`               | simulator, all       | ⬜ Not started  | —                      |
 
 ---
 

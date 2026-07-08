@@ -159,20 +159,21 @@ the real behavior, update the spec in the same change.
 | --- | --- | --- | --- |
 | 19 | Route Table | [19_route_table.md](19_route_table.md) | Updated |
 | 20 | Router | [20_router.md](20_router.md) | Updated |
-| 21 | RIP | [21_rip.md](21_rip.md) | Updated |
-| 22 | OSPF | [22_ospf.md](22_ospf.md) | Updated |
-| 23 | BGP | [23_bgp.md](23_bgp.md) | Updated |
-| 24 | EIGRP | [24_eigrp.md](24_eigrp.md) | Updated |
-| 25 | IS-IS | [25_isis.md](25_isis.md) | Updated |
-| 26 | NAT / PAT | [26_nat.md](26_nat.md) | Updated |
+| 21 | Static Route | [21_static_route.md](21_static_route.md) | Updated |
+| 22 | RIP | [22_rip.md](22_rip.md) | Updated |
+| 23 | OSPF | [23_ospf.md](23_ospf.md) | Updated |
+| 24 | BGP | [24_bgp.md](24_bgp.md) | Updated |
+| 25 | EIGRP | [25_eigrp.md](25_eigrp.md) | Updated |
+| 26 | IS-IS | [26_isis.md](26_isis.md) | Updated |
+| 27 | NAT / PAT | [27_nat.md](27_nat.md) | Updated |
 
 ## Phase 4 - Display And CLI
 
 | # | Module | Spec | Spec Status |
 | --- | --- | --- | --- |
-| 27 | Topology Display | [27_display_topology.md](27_display_topology.md) | Updated |
-| 28 | Packet Header Display | [28_display_packet.md](28_display_packet.md) | Updated |
-| 29 | CLI | [29_cli.md](29_cli.md) | Updated |
+| 28 | Topology Display | [28_display_topology.md](28_display_topology.md) | Updated |
+| 29 | Packet Header Display | [29_display_packet.md](29_display_packet.md) | Updated |
+| 30 | CLI | [30_cli.md](30_cli.md) | Updated |
 
 ## How To Use These Files
 

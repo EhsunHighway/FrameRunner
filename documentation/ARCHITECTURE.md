@@ -248,8 +248,12 @@
 │  ┌─────────────────────────────────────────────────────────┐  │
 │  │  Static Route  (static_route.c/h)                       │  │
 │  │                                                         │  │
-│  │  static_route_load(device, config)                      │  │
-│  │  static_route_add(device, prefix, nexthop)              │  │
+│  │  static_route_init(table)                               │  │
+│  │  static_route_add(table, router, prefix, prefix_len,    │  │
+│  │                   next_hop, iface, metric)              │  │
+│  │  static_route_delete(table, router, prefix, prefix_len) │  │
+│  │  static_route_apply(table, router)                      │  │
+│  │  static_route_flush(table, router)                      │  │
 │  └─────────────────────────────────────────────────────────┘  │
 └───────────────────────────────────────────────────────────────┘
 ```

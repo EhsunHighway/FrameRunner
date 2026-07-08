@@ -1,4 +1,4 @@
-# Module 22 - OSPF
+# Module 23 - OSPF
 
 **Files:** `src/protocols/ospf.c`, `src/protocols/ospf.h`
 **Depends on:** `router`, `route_table`, `ip`, `packet`, `interface`,
@@ -28,9 +28,16 @@ This simulator implements a simplified OSPFv2 for IPv4:
 
 ### Link-State Database
 
-The LSDB is the link-state database.
+LSDB means Link-State Database.
 
-It stores the most recent LSA learned from each advertising router.
+LSA means Link-State Advertisement.
+
+An LSA is one router's advertised description of part of the topology. In this
+simulator's first OSPF milestone, the important LSA is the router-LSA: it says
+which routers or networks one advertising router is connected to, and what each
+link costs.
+
+The LSDB stores the most recent LSA learned from each advertising router.
 
 An LSA says:
 

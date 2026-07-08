@@ -39,11 +39,36 @@ Host:
 Router:
 
 - owns a route table
+- owns a local IP protocol dispatch stack for control-plane protocols
 - receives packets that may be destined somewhere else
+- consumes packets addressed to itself or link-local control-plane multicast
 - forwards packets between interfaces
 - uses longest prefix match to choose an egress interface and next hop
 
 Router should not own UDP or TCP state just because hosts do.
+
+### Local Control Plane Versus Transit Forwarding
+
+A router has two IPv4 receive paths:
+
+```text
+local/control-plane packet -> Router local IpStack -> protocol handler
+transit data packet        -> route lookup -> forwarding
+```
+
+Local/control-plane packets are packets the router itself should consume. In
+this simulator that includes:
+
+- packets whose destination IP equals one of the Router interface IP addresses
+- link-local routing multicast packets such as OSPF `224.0.0.5`
+
+Transit packets are packets that are not for the router itself. Router forwards
+those through the route table.
+
+The local IP stack is not a host UDP/TCP endpoint stack. It is a dispatch table
+for router control-plane protocols such as OSPF protocol `89`. OSPF registers
+its receive function in this Router-owned stack; Router decides whether an
+incoming IPv4 packet should be delivered locally or forwarded.
 
 ### Router Versus Switch
 
@@ -150,8 +175,11 @@ It provides:
 - embedded Device initialization
 - embedded ARP cache initialization
 - embedded RouteTable initialization
+- embedded local IpStack initialization
 - interface addition with shared router ARP cache
 - route add/delete wrappers
+- route-table entry points used by static-route configuration
+- local control-plane IPv4 protocol dispatch
 - IPv4 forwarding receive path
 - ARP miss handling with pending packet queue
 
@@ -173,10 +201,12 @@ It does not:
 | Interface objects after successful add | Router through `Device` |
 | ARP cache storage | embedded `ArpCache` in Router |
 | Route storage and LPM | embedded `RouteTable` in Router |
+| Local control-plane protocol dispatch | embedded `IpStack` in Router |
 | Next-hop route selection | `route_table_lookup` |
 | TTL decrement and checksum update | Router |
 | ARP request and pending queue | ARP / ARP cache modules |
 | Ethernet transmission | Ethernet module |
+| Static route configuration records | Static route module |
 | Routing protocol decisions | RIP/OSPF/BGP/EIGRP/IS-IS modules |
 
 Router should include `route_table.h`, not re-declare route structures.
@@ -201,6 +231,7 @@ typedef struct Router {
     Device     base;
     ArpCache   arp_cache;
     RouteTable route_tbl;
+    IpStack    ip_stack;
     Simulator *sim;
 } Router;
 ```
@@ -208,8 +239,12 @@ typedef struct Router {
 `base` must be the first field. That makes `&router->base` the embedded Device
 used by shared Device helpers.
 
-`arp_cache` and `route_tbl` are embedded. They are not pointers and must not be
-freed separately.
+`arp_cache`, `route_tbl`, and `ip_stack` are embedded. They are not pointers and
+must not be freed separately.
+
+`ip_stack` is the Router local control-plane dispatch stack. It is used for
+packets that should be consumed by the Router itself, such as OSPF protocol
+`89` packets sent to `224.0.0.5`.
 
 `sim` is borrowed. Router does not free it.
 
@@ -224,13 +259,14 @@ freed separately.
 #include "packet.h"
 #include "../engine/simulator.h"
 #include "../protocols/arp_cache.h"
+#include "../protocols/ip.h"
 #include "../routing/route_table.h"
 ```
 
 `router.h` must not include `mac_table.h`.
 
-Implementation-only includes such as `arp.h`, `ip.h`, `icmp.h`, and
-`ethernet.h` belong in `router.c` when needed.
+Implementation-only includes such as `arp.h`, `icmp.h`, and `ethernet.h`
+belong in `router.c` when needed.
 
 ### Byte Order Rules
 
@@ -304,8 +340,9 @@ int router_del_route(Router  *router,
 ```
 
 `router_add_route` and `router_del_route` are thin wrappers around the route
-table public API. Routing protocol modules should call these wrappers instead
-of reaching into `router->route_tbl` directly.
+table public API. Static-route configuration and routing protocol modules
+should call these wrappers instead of reaching into `router->route_tbl`
+directly.
 
 ## Function Behavior
 
@@ -342,6 +379,7 @@ Implementation order:
 - Set `router->base.iface_max = ROUTER_MAX_PORTS`.
 - Call `arp_cache_init(&router->arp_cache)`.
 - Call `route_table_init(&router->route_tbl)`.
+- Call `ip_stack_init(&router->ip_stack, sim)`.
 - Store borrowed simulator pointer in `router->sim`.
 - Return the Router.
 
@@ -353,6 +391,7 @@ Postconditions after non-NULL return:
 - `router->base.interfaces` has capacity `ROUTER_MAX_PORTS`.
 - `router->arp_cache` is initialized empty.
 - `router->route_tbl` is initialized empty.
+- `router->ip_stack` is initialized for Router local control-plane dispatch.
 
 The allocation failure branches above must release only Router-owned state that
 has actually been created.
@@ -467,12 +506,21 @@ Implementation order:
 - Validate the IPv4 header with `ip_validate_header(pkt)` before changing TTL.
 - If validation fails, free `pkt`, increment `rx_errors`, return `-1`.
 - Read the IPv4 header at `pkt->data`.
+- Convert destination IP from network order to host order.
+- Decide whether this packet is local/control-plane:
+  - destination equals one of the Router interface IP addresses, or
+  - destination is an IPv4 link-local control-plane multicast address that this
+    Router handles locally, such as `OSPF_ALLSPFROUTERS` (`224.0.0.5`)
+- If the packet is local/control-plane:
+  - call `ip_receive(in_iface, pkt, ETHERTYPE_IPV4, &router->ip_stack)`
+  - return that result
+- At this point the packet is transit traffic, so Router forwarding owns the
+  remaining processing.
 - If `ttl <= 1`:
   - call `icmp_send_time_exceeded(router->sim, in_iface, pkt)`
   - increment `in_iface->rx_dropped`
   - free `pkt`
   - return `-1`
-- Convert destination IP from network order to host order.
 - Look up the destination in `router->route_tbl`.
 - If lookup misses:
   - call `icmp_send_unreach_net(router->sim, in_iface, pkt)`
@@ -528,6 +576,7 @@ router_create(name, sim)
   +-- allocate Device interface array
   +-- arp_cache_init(&router->arp_cache)
   +-- route_table_init(&router->route_tbl)
+  +-- ip_stack_init(&router->ip_stack, sim)
   +-- router->sim = sim
   +-- return Router
 ```
@@ -551,6 +600,10 @@ router_receive(router, in_iface, pkt)
   |
   +-- ip_validate_header(pkt)
   |     fail: rx_errors++, free pkt, return -1
+  |
+  +-- local/control-plane destination?
+  |     ip_receive(in_iface, pkt, ETHERTYPE_IPV4, &router->ip_stack)
+  |     return result
   |
   +-- ttl <= 1?
   |     icmp_send_time_exceeded(router->sim, in_iface, pkt)
@@ -608,6 +661,7 @@ The contracts belong in `router.h`. Use literal bounds:
         ensures \result != \null ==> \result->arp_cache.pending_count == 0;
         ensures \result != \null ==> \result->route_tbl.rib_count == 0;
         ensures \result != \null ==> \result->route_tbl.fib_count == 0;
+        ensures \result != \null ==> \result->ip_stack.sim == sim;
 
     complete behaviors;
     disjoint behaviors;
@@ -763,6 +817,7 @@ int router_del_route(Router *router,
                 in_iface->tx_bytes,
                 in_iface->last_tx_time,
                 pkt->data[0 .. pkt->len - 1],
+                router->ip_stack.protocols[0 .. 255],
                 router->arp_cache.pending[0 .. 31],
                 router->arp_cache.pending_count;
         ensures \result == 0 || \result == -1;

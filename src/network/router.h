@@ -7,6 +7,7 @@
 #include "packet.h"
 #include "../engine/simulator.h"
 #include "../protocols/arp_cache.h"
+#include "../protocols/ip.h"
 #include "../routing/route_table.h"
 
 #define ROUTER_MAX_PORTS 8
@@ -15,6 +16,7 @@ typedef struct Router {
     Device     base;
     ArpCache   arp_cache;
     RouteTable route_tbl;
+    IpStack    ip_stack;    // local control-plane protocols
     Simulator *sim;
 } Router;
 

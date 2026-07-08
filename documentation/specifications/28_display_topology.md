@@ -1,4 +1,4 @@
-# Module 27 - Display Topology
+# Module 28 - Display Topology
 
 **Files:** `src/display/topology_view.c`, `src/display/topology_view.h`
 **Status:** Ready for implementation; current source files are empty

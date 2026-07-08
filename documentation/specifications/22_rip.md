@@ -1,4 +1,4 @@
-# Module 21 - RIP
+# Module 22 - RIP
 
 **Files:** `src/protocols/rip.c`, `src/protocols/rip.h`
 **Status:** In implementation

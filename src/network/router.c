@@ -6,6 +6,26 @@
 #include <stdlib.h>
 #include <string.h>
 
+static int router_ip_is_local(const Router *router, uint32_t dst_ip) {
+    if (!router) {
+        return 0;
+    }
+
+    for (int i = 0; i < router->base.iface_count; i++) {
+        Interface *iface = router->base.interfaces[i];
+        if (iface && ns_ntohl(iface->ip_addr) == dst_ip) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+static int router_ip_is_control_multicast(uint32_t dst_ip) {
+    return dst_ip == 0xE0000005u ||
+           dst_ip == 0xE0000006u;
+}
+
 static void router_rx_shim(Interface *iface,
                            Packet    *pkt,
                            uint16_t   ethertype,
@@ -60,6 +80,7 @@ Router *router_create(const char *name, Simulator *sim) {
 
     arp_cache_init(&router->arp_cache);
     route_table_init(&router->route_tbl);
+    ip_stack_init(&router->ip_stack, sim);
 
     return router;
 }
@@ -120,6 +141,15 @@ int     router_receive(Router    *router,
     }
 
     IpHeader *ip_hdr = (IpHeader *)pkt->data;
+    uint32_t  dst_ip = ns_ntohl(ip_hdr->dst_ip);
+
+    if (router_ip_is_local(router, dst_ip) ||
+        router_ip_is_control_multicast(dst_ip)) {
+        return ip_receive(iface,
+                          pkt,
+                          ETHERTYPE_IPV4,
+                          &router->ip_stack);
+    }
 
     if (ip_hdr->ttl <= 1) {
         icmp_send_time_exceeded(router->sim, iface, pkt);
@@ -128,7 +158,6 @@ int     router_receive(Router    *router,
         return -1;
     }
 
-    uint32_t       dst_ip = ns_ntohl(ip_hdr->dst_ip);
     RouteFibEntry *route  = route_table_lookup(&router->route_tbl, dst_ip);
     if (!route) {
         icmp_send_unreach_net(router->sim, iface, pkt);

@@ -1,4 +1,4 @@
-# Module 24 - EIGRP
+# Module 25 - EIGRP
 
 **Files:** `src/protocols/eigrp.c`, `src/protocols/eigrp.h`
 **Status:** Ready for implementation; source files do not exist yet
