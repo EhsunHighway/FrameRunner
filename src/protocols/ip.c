@@ -220,7 +220,29 @@ int ip_output(Simulator *sim,
     }
 
     Interface *iface = ip_find_source_iface(sim, src_ip);
-    if (!iface || !interface_is_up(iface) || !iface->arp_cache) {
+    if (!iface || !interface_is_up(iface)) {
+        return -1;
+    }
+
+    if (ip_is_multicast(dst_ip)) {
+        uint8_t dst_mac[ETH_ALEN];
+        if (ip_multicast_to_mac(dst_ip, dst_mac) != 0) {
+            return -1;
+        }
+        if (ip_prepend_header(src_ip, dst_ip, protocol, payload) == -1) {
+            return -1;
+        }
+
+        iface->tx_bytes    += payload->len;
+        iface->last_tx_time = simulator_now(sim);
+        return ethernet_send(sim,
+                             iface,
+                             dst_mac,
+                             ETHERTYPE_IPV4,
+                             payload);
+    }
+
+    if (!iface->arp_cache) {
         return -1;
     }
 
@@ -257,6 +279,47 @@ int ip_output(Simulator *sim,
                          payload);
 }
 
+int ip_is_multicast(uint32_t ip_addr) {
+    return (ip_addr & IP_MULTICAST_MASK) == IP_MULTICAST_BASE ? 1 : 0;
+}
+
+int ip_multicast_to_mac(uint32_t ip_addr, uint8_t out_mac[6]) {
+    if (!out_mac || !ip_is_multicast(ip_addr)) {
+        return -1;
+    }
+
+    out_mac[0] = 0x01;
+    out_mac[1] = 0x00;
+    out_mac[2] = 0x5e;
+    out_mac[3] = (uint8_t)((ip_addr >> 16) & 0x7f);
+    out_mac[4] = (uint8_t)((ip_addr >> 8) & 0xff);
+    out_mac[5] = (uint8_t)(ip_addr & 0xff);
+    return 0;
+}
+
+int ip_mask_to_prefix_len(uint32_t mask, uint8_t *out_prefix_len) {
+    if (!out_prefix_len) {
+        return -1;
+    }
+
+    uint8_t prefix_len = 0;
+    int     seen_zero  = 0;
+
+    for (int bit = 31; bit >= 0; bit--) {
+        if ((mask >> bit) & 1u) {
+            if (seen_zero) {
+                return -1;
+            }
+            prefix_len++;
+        } else {
+            seen_zero = 1;
+        }
+    }
+
+    *out_prefix_len = prefix_len;
+    return 0;
+}
+
 /*
  * The checksum is calculated by treating the header as a sequence of 16-bit words, 
  * summing them up, and then taking the one's complement of the sum. 
@@ -267,7 +330,7 @@ uint16_t  ip_checksum(IpHeader *ip_hdr) {
         return 0xFFFF; 
     }
 
-    uint32_t sum = 0;
+    uint32_t  sum = 0;
     uint16_t *ptr = (uint16_t *)ip_hdr;
     for (int i = 0; i < IP_HDR_LEN / 2; i++) {
         sum += ns_ntohs(ptr[i]);

@@ -284,26 +284,41 @@ void arp_cache_cleanup(ArpCache *cache, uint64_t current_time);
 ## Function Behavior
 
 Function behavior is an implementation contract. For simple functions, the
-required-behavior list is written in execution order unless the text explicitly
-says order does not matter. For non-trivial functions, especially functions with
-ownership transfer, queueing, lookup, selection, state-machine transitions, or
-packet forwarding, split the section into behavior summary, implementation
-order, and postconditions so the coder does not have to guess.
+`Implementation order` list is written in execution order unless the text
+explicitly says order does not matter. For non-trivial functions, especially
+functions with ownership transfer, queueing, lookup, selection, state-machine
+transitions, or packet forwarding, split the section into behavior summary,
+implementation order, and postconditions so the coder does not have to guess.
+Do not mix final-state facts into `Implementation order`; put them under
+`Postconditions` unless the implementation must check that fact at that exact
+point in control flow.
 
 
 ### `arp_cache_init`
 
-Required behavior:
+Behavior summary:
+
+`arp_cache_init` prepares caller-owned ARP cache storage so there are no learned
+entries and no pending packets.
+
+Implementation order:
 
 - If `cache == NULL`, return immediately.
 - Clear the whole `ArpCache` object.
+
+Postconditions after `cache != NULL`:
+
+- Learned-entry count is `0`.
+- Pending-packet count is `0`.
+- Every learned entry is invalid.
+- Every pending entry is invalid and has no stale packet/interface pointer.
 
 This function is the public initializer. Host and Router creation should call
 it instead of manually setting fields.
 
 ### `arp_cache_add`
 
-Required behavior:
+Implementation order:
 
 - If `cache == NULL`, return without changing state.
 - If `ip_addr == 0`, return without changing state.
@@ -313,7 +328,8 @@ Required behavior:
   - update `timestamp`
   - leave `count` unchanged
   - return
-- Otherwise, search all 256 cache entries for the first invalid slot.
+- Otherwise, scan `entries[0 .. ARP_MAX_CACHE_SIZE - 1]` for the first unused
+  learned-entry slot, where unused means `entries[i].valid == 0`.
 - If found:
   - store `ip_addr`
   - copy six MAC bytes from `mac_addr`
@@ -321,14 +337,14 @@ Required behavior:
   - set `valid = 1`
   - increment `count`
   - return
-- If no free slot exists, leave state unchanged.
+- If no unused learned-entry slot exists, leave state unchanged.
 
 The current implementation does not check `mac_addr == NULL`. Callers must pass
 a readable six-byte MAC pointer when `cache != NULL` and `ip_addr != 0`.
 
 ### `arp_cache_lookup`
 
-Required behavior:
+Implementation order:
 
 - If `cache == NULL`, return `-1`.
 - If `ip_addr == 0`, return `-1`.
@@ -343,13 +359,14 @@ Lookup does not send ARP requests.
 
 ### `arp_pending_enqueue`
 
-Required behavior:
+Implementation order:
 
 - If `cache == NULL`, return `-1`.
 - If `iface == NULL`, return `-1`.
 - If `target_ip == 0`, return `-1`.
 - If `packet == NULL`, return `-1`.
-- Search all 32 pending slots for the first invalid slot.
+- Scan `pending[0 .. ARP_MAX_PENDING_PACKETS - 1]` for the first unused pending
+  slot, where unused means `pending[i].valid == 0`.
 - If found:
   - store `target_ip`
   - store `ethertype`
@@ -358,11 +375,11 @@ Required behavior:
   - set `valid = 1`
   - increment `pending_count`
   - return `0`
-- If no free slot exists, return `-1`.
+- If no unused pending slot exists, return `-1`.
 
 ### `arp_pending_flush`
 
-Required behavior:
+Implementation order:
 
 - If `sim == NULL`, return `0`.
 - If `cache == NULL`, return `0`.
@@ -385,7 +402,7 @@ Required behavior:
 
 ### `arp_cache_cleanup`
 
-Required behavior:
+Implementation order:
 
 - If `cache == NULL`, return immediately.
 - Scan all 256 cache entries.
@@ -555,7 +572,8 @@ Additional required proof/test property:
 
 - Refreshing an existing valid IP updates MAC and timestamp without changing
   `count`.
-- Inserting into a free slot stores all six MAC bytes and increments `count`.
+- Inserting into an unused learned-entry slot, where `valid == 0`, stores all
+  six MAC bytes and increments `count`.
 - Adding when the table is full and no existing IP matches leaves `count`
   unchanged.
 

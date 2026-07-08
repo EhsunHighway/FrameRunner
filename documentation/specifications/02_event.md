@@ -304,16 +304,19 @@ void        event_free(Event *e);
 ## Function Behavior
 
 Function behavior is an implementation contract. For simple functions, the
-required-behavior list is written in execution order unless the text explicitly
-says order does not matter. For non-trivial functions, especially functions with
-ownership transfer, queueing, lookup, selection, state-machine transitions, or
-packet forwarding, split the section into behavior summary, implementation
-order, and postconditions so the coder does not have to guess.
+`Implementation order` list is written in execution order unless the text
+explicitly says order does not matter. For non-trivial functions, especially
+functions with ownership transfer, queueing, lookup, selection, state-machine
+transitions, or packet forwarding, split the section into behavior summary,
+implementation order, and postconditions so the coder does not have to guess.
+Do not mix final-state facts into `Implementation order`; put them under
+`Postconditions` unless the implementation must check that fact at that exact
+point in control flow.
 
 
 ### `event_create_callback`
 
-Required behavior:
+Implementation order:
 
 - Allocate one `Event`.
 - If allocation fails, return `NULL`.
@@ -324,7 +327,7 @@ The event module does not validate whether `type` is a known enum value.
 
 ### `event_create`
 
-Required behavior:
+Implementation order:
 
 - Create an event with the same fields as `event_create_callback`.
 - Set `handler == NULL`.
@@ -335,19 +338,22 @@ of a per-event callback.
 
 ### `event_free`
 
-Required behavior:
+Implementation order:
 
 - If `e == NULL`, return immediately.
 - Free only the `Event` object.
 
 ### `event_queue_create`
 
-Required behavior:
+Implementation order:
 
 - Caller should pass `capacity > 0`.
 - Allocate one `EventQueue`.
+- If `EventQueue` allocation fails, return `NULL`.
 - Allocate an array of `capacity` `Event *` slots.
-- If either allocation fails, return `NULL` and leak nothing from this call.
+- If array allocation fails:
+  - free the `EventQueue`
+  - return `NULL`
 - Set `count == 0`.
 - Set `capacity == capacity`.
 - Store the array pointer in `events`.
@@ -357,7 +363,7 @@ callers and tests should treat `capacity == 0` as outside the supported API.
 
 ### `event_queue_free`
 
-Required behavior:
+Implementation order:
 
 - If `eq == NULL`, return immediately.
 - Free `eq->events`.
@@ -366,7 +372,7 @@ Required behavior:
 
 ### `event_queue_push`
 
-Required behavior:
+Implementation order:
 
 - Caller must pass a valid queue.
 - Caller must pass a valid event.
@@ -382,7 +388,7 @@ The implementation stores event pointers. It does not copy `Event` objects.
 
 ### `event_queue_pop`
 
-Required behavior:
+Implementation order:
 
 - Caller must pass a valid queue.
 - If `count == 0`, return `NULL`.
@@ -395,7 +401,7 @@ The returned event is no longer owned by the queue.
 
 ### `event_queue_peek`
 
-Required behavior:
+Implementation order:
 
 - Caller must pass a valid queue.
 - If `count == 0`, return `NULL`.
@@ -406,7 +412,7 @@ The returned event remains stored in the queue.
 
 ### `event_queue_is_empty`
 
-Required behavior:
+Implementation order:
 
 - Caller must pass a valid queue.
 - Return `1` if `count == 0`.

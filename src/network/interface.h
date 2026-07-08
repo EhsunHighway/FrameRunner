@@ -29,26 +29,26 @@ typedef enum {
 
 
 typedef struct Interface {
-    char            name[16];        // e.g.: "eth0", "ge0/0"
-    uint8_t         mac[6];          // 48-bit MAC, network byte order
-    uint32_t        ip_addr;         // IPv4, network byte order
-    uint8_t         prefix_len;      // 0-32 CIDR prefix length (subnet mask)
-    uint16_t        mtu;             // max transmission unit default 1500
-    int             up;              // 1=up, 0=down
-    struct Link    *link;            // NULL if not connected
-    struct Device  *device;          // back-pointer to owning device (set by device_add_interface)
-    uint64_t        tx_bytes;        // total bytes transmitted (for stats)
-    uint64_t        rx_bytes;        // total bytes received (for stats)
-    RxHandler       rx_handler;      // callback for received packets
-    void           *handler_ctx;     // opaque context passed to rx_handler
+    char             name[16];        // e.g.: "eth0", "ge0/0"
+    uint8_t          mac[6];          // 48-bit MAC, network byte order
+    uint32_t         ip_addr;         // IPv4, network byte order
+    uint8_t          prefix_len;      // 0-32 CIDR prefix length (subnet mask)
+    uint16_t         mtu;             // max transmission unit default 1500
+    int              up;              // 1=up, 0=down
+    struct Link     *link;            // NULL if not connected
+    struct Device   *device;          // back-pointer to owning device (set by device_add_interface)
+    uint64_t         tx_bytes;        // total bytes transmitted (for stats)
+    uint64_t         rx_bytes;        // total bytes received (for stats)
+    RxHandler        rx_handler;      // callback for received packets
+    void            *handler_ctx;     // opaque context passed to rx_handler
     struct ArpCache *arp_cache;      // borrowed L3 neighbor cache, owned by host/router
-    uint64_t        rx_dropped;      // wrong MAC, etc.
-    uint64_t        rx_errors;       // malformed, truncated
-    uint64_t        tx_errors;       // link down, alloc failed
-    InterfaceState  state;           // interface operational state
-    uint64_t        last_rx_time;    // last successful RX (sim time µs)
-    uint64_t        last_tx_time;    // last successful TX (sim time µs)
-    uint64_t        last_error_time; // last error event (sim time µs)
+    uint64_t         rx_dropped;      // wrong MAC, etc.
+    uint64_t         rx_errors;       // malformed, truncated
+    uint64_t         tx_errors;       // link down, alloc failed
+    InterfaceState   state;           // interface operational state
+    uint64_t         last_rx_time;    // last successful RX (sim time µs)
+    uint64_t         last_tx_time;    // last successful TX (sim time µs)
+    uint64_t         last_error_time; // last error event (sim time µs)
 } Interface;
 
 

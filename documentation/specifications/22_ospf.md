@@ -1,7 +1,6 @@
 # Module 22 - OSPF
 
 **Files:** `src/protocols/ospf.c`, `src/protocols/ospf.h`
-**Status:** Ready for implementation; source files do not exist yet
 **Depends on:** `router`, `route_table`, `ip`, `packet`, `interface`,
 `scheduler`, `event`, `simulator`, `byte_order`
 
@@ -134,10 +133,9 @@ OSPF uses link-local multicast:
 
 The first milestone uses `224.0.0.5`.
 
-Current-stack warning: current `ip_output` is subnet-oriented and does not
-guarantee multicast output. OSPF send path must either add multicast support to
-IP output or use an OSPF-specific link-local send helper that still preserves
-IPv4 and Ethernet ownership rules.
+The IP module owns IPv4 multicast-to-Ethernet multicast mapping. OSPF send code
+should send through IP output with protocol `IPPROTO_OSPF`/`89` and destination
+`OSPF_ALLSPFROUTERS`; it should not build Ethernet multicast frames itself.
 
 ## Purpose
 
@@ -246,6 +244,26 @@ Multi-byte fields are network byte order on the wire.
 
 `au_type` and `auth_data` are zero in this simulator.
 
+Wire layout:
+
+```text
+0                   1                   2                   3
++-------------------+-------------------+-------------------+-------------------+
+| version           | type              | pkt_len                               |
++-------------------+-------------------+-------------------+-------------------+
+| router_id                                                                     |
++-------------------------------------------------------------------------------+
+| area_id                                                                       |
++-------------------------------------------------------------------------------+
+| checksum                              | au_type                               |
++-------------------+-------------------+-------------------+-------------------+
+| auth_data, bytes 0..3                                                        |
++-------------------------------------------------------------------------------+
+| auth_data, bytes 4..7                                                        |
++-------------------------------------------------------------------------------+
+  24-byte OSPF common header
+```
+
 ### `OspfHello`
 
 ```c
@@ -262,6 +280,25 @@ typedef struct __attribute__((packed)) OspfHello {
 
 The neighbor list follows the fixed Hello body. Each neighbor ID is a 32-bit
 router ID.
+
+Wire layout for the fixed Hello body:
+
+```text
+0                   1                   2                   3
++-------------------+-------------------+-------------------+-------------------+
+| network_mask                                                                  |
++-------------------------------------------------------------------------------+
+| hello_interval                       | options           | router_priority     |
++-------------------+-------------------+-------------------+-------------------+
+| dead_interval                                                                 |
++-------------------------------------------------------------------------------+
+| designated router                                                             |
++-------------------------------------------------------------------------------+
+| backup designated router                                                      |
++-------------------------------------------------------------------------------+
+| neighbor router IDs, zero or more 32-bit values ...                           |
++-------------------------------------------------------------------------------+
+```
 
 ### `OspfLsaLink`
 
@@ -331,6 +368,73 @@ typedef struct OspfLsaEntry {
 ```
 
 The first milestone stores router LSAs with up to four links.
+
+### Simplified LSU Body
+
+The first milestone uses one simplified LSU body shape. It is not the full RFC
+LSA encoding. It is the simulator's compact wire representation for carrying
+one or more `OspfLsaEntry` records.
+
+```c
+typedef struct __attribute__((packed)) OspfLsuHeader {
+    uint16_t lsa_count;
+    uint16_t reserved;
+} OspfLsuHeader;
+
+typedef struct __attribute__((packed)) OspfLsaWire {
+    uint32_t lsa_id;
+    uint32_t adv_router;
+    uint32_t seq_num;
+    uint16_t checksum;
+    uint8_t  lsa_type;
+    uint8_t  link_count;
+} OspfLsaWire;
+```
+
+The LSU body is:
+
+```text
+OspfLsuHeader
+OspfLsaWire for LSA 0
+OspfLsaLink[link_count] for LSA 0
+OspfLsaWire for LSA 1
+OspfLsaLink[link_count] for LSA 1
+...
+```
+
+Wire layout for `OspfLsuHeader`:
+
+```text
+0                   1                   2                   3
++-------------------+-------------------+-------------------+-------------------+
+| lsa_count                             | reserved                              |
++-------------------+-------------------+-------------------+-------------------+
+```
+
+Wire layout for `OspfLsaWire`:
+
+```text
+0                   1                   2                   3
++-------------------------------------------------------------------------------+
+| lsa_id                                                                        |
++-------------------------------------------------------------------------------+
+| adv_router                                                                    |
++-------------------------------------------------------------------------------+
+| seq_num                                                                       |
++-------------------+-------------------+-------------------+-------------------+
+| checksum                              | lsa_type          | link_count         |
++-------------------+-------------------+-------------------+-------------------+
+```
+
+Parsing rule:
+
+- `lsa_count` tells how many `OspfLsaWire` records are present.
+- Each `OspfLsaWire.link_count` tells how many `OspfLsaLink` records follow
+  that LSA header.
+- If any `link_count > OSPF_MAX_LSA_LINKS`, reject the packet.
+- If the packet ends before all declared LSA/link records are present, reject
+  the packet.
+- Multi-byte fields are network byte order.
 
 ### `OspfIface`
 
@@ -436,23 +540,40 @@ integration before OSPF receive is complete.
 ## Function Behavior
 
 Function behavior is an implementation contract. For simple functions, the
-required-behavior list is written in execution order unless the text explicitly
-says order does not matter. For non-trivial functions, especially functions with
-ownership transfer, queueing, lookup, selection, state-machine transitions, or
-packet forwarding, split the section into behavior summary, implementation
-order, and postconditions so the coder does not have to guess.
+`Implementation order` list is written in execution order unless the text
+explicitly says order does not matter. For non-trivial functions, especially
+functions with ownership transfer, queueing, lookup, selection, state-machine
+transitions, or packet forwarding, split the section into behavior summary,
+implementation order, and postconditions so the coder does not have to guess.
+Do not mix final-state facts into `Implementation order`; put them under
+`Postconditions` unless the implementation must check that fact at that exact
+point in control flow.
 
 
 ### `ospf_init`
 
-Required behavior:
+Behavior summary:
+
+`ospf_init` prepares caller-owned OSPF state for one router and schedules the
+first Hello timer when a scheduler exists.
+
+Implementation order:
 
 - If `state == NULL`, return immediately.
 - Zero all OSPF state.
 - Store `sim`, `router`, `router_id`, and area `0`.
-- Initialize neighbor count, LSDB count, and interface count to zero.
 - If `sim != NULL && sim->sched != NULL`, schedule first Hello event at
   `scheduler_now(sim->sched) + OSPF_HELLO_INTERVAL_US`.
+
+Postconditions after `state != NULL`:
+
+- Neighbor count is `0`.
+- LSDB count is `0`.
+- Interface count is `0`.
+- `state->sim == sim`.
+- `state->router == router`.
+- `state->router_id == router_id`.
+- Area is backbone area `0`.
 
 Protocol registration for IP protocol `89` may be done by the Router/control
 plane owner rather than by `ospf_init`, because `ospf_init` may not own the IP
@@ -460,13 +581,16 @@ stack.
 
 ### `ospf_enable_iface`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL || iface == NULL`, return `-1`.
 - If `cost == 0`, return `-1`.
 - If the interface is already enabled, update its cost and return `0`.
 - If `iface_count >= OSPF_MAX_IFACES`, return `-1`.
-- Store the interface and cost in the first free OSPF interface slot.
+- Scan `state->ifaces[0 .. OSPF_MAX_IFACES - 1]` for the first unused slot,
+  where unused means `state->ifaces[i].valid == 0`.
+- Store `iface` and `cost` in that slot.
+- Set that slot's `valid = 1`.
 - Increment `iface_count`.
 - Return `0`.
 
@@ -474,7 +598,14 @@ OSPF does not take ownership of the interface.
 
 ### `ospf_receive`
 
-Required behavior:
+Behavior summary:
+
+`ospf_receive` consumes an IPv4 protocol-89 payload after the IPv4 header has
+already been stripped by the IP receive path. The packet's visible bytes start
+at `OspfHeader`. The function validates the common OSPF header, then dispatches
+to the Hello or LSU receive logic. Every non-NULL packet is freed before return.
+
+Implementation order:
 
 - If `iface == NULL`, return `-1`.
 - If `pkt == NULL`, increment `iface->rx_errors` and return `-1`.
@@ -482,44 +613,124 @@ Required behavior:
 - Cast `ctx` to `OspfState *`.
 - If packet is shorter than `OspfHeader`, free `pkt`, increment `rx_errors`,
   return `-1`.
-- Validate OSPF version `2`.
-- Validate area ID equals state area ID.
-- Validate packet length field is at least header length and no larger than
-  visible packet length.
-- Validate authentication type/data are zero.
-- Validate checksum according to the OSPF checksum rule, or document checksum
-  as disabled for the first milestone and require checksum field zero.
+- Interpret `pkt->data` as `OspfHeader`.
+- Convert `pkt_len`, `router_id`, `area_id`, `checksum`, and `au_type` from
+  network order to host order before comparison.
+- If `version != OSPF_VERSION`, free `pkt`, increment `rx_errors`, return `-1`.
+- If `area_id != state->area_id`, free `pkt`, increment `rx_dropped`, return
+  `-1`.
+- If `pkt_len < sizeof(OspfHeader)` or `pkt_len > pkt->len`, free `pkt`,
+  increment `rx_errors`, return `-1`.
+- In this milestone, checksum validation is disabled. Require `checksum == 0`;
+  otherwise free `pkt`, increment `rx_errors`, return `-1`.
+- Require `au_type == 0` and `auth_data == 0`; otherwise free `pkt`, increment
+  `rx_errors`, return `-1`.
 - Dispatch by packet type:
-  - Hello: process neighbor discovery
-  - LSU: update LSDB, flood newer LSAs, schedule SPF
-  - DBD/LSR/LSAck: return unsupported in first milestone or implement database
-    exchange if the project reaches that phase
+  - `OSPF_TYPE_HELLO`: process the Hello body using the Hello receive order
+    below
+  - `OSPF_TYPE_LSU`: process the simplified LSU body using the LSU receive
+    order below
+  - `OSPF_TYPE_DBD`, `OSPF_TYPE_LSR`, or `OSPF_TYPE_LSACK`: free `pkt` and
+    return `0`; these packet types are recognized but unsupported in the first
+    milestone
+  - any other type: free `pkt`, increment `rx_errors`, return `-1`
 - Free `pkt` after processing.
 - Return `0` for accepted control-plane packets, `-1` for malformed packets.
 
+Hello receive order:
+
+- Verify that `pkt_len` is at least `sizeof(OspfHeader) + sizeof(OspfHello)`.
+- Interpret the bytes after `OspfHeader` as `OspfHello`.
+- Convert `network_mask`, `hello_interval`, `dead_interval`, `dr`, and `bdr`
+  from network order to host order.
+- The neighbor list starts immediately after `OspfHello`.
+- The neighbor list length is
+  `pkt_len - sizeof(OspfHeader) - sizeof(OspfHello)`.
+- If the neighbor list length is not a multiple of four bytes, reject the
+  packet.
+- Convert each neighbor router ID in the list from network order to host order.
+- Search `state->neighbors[0 .. OSPF_MAX_NEIGHBORS - 1]` for a valid neighbor
+  whose `router_id` matches the sender router ID from `OspfHeader`.
+- If a matching neighbor exists, use that slot.
+- If no matching neighbor exists, scan for the first invalid neighbor slot.
+- If no invalid slot exists, free `pkt`, increment `rx_dropped`, return `-1`.
+- If an invalid slot is used, increment `neighbor_count` once.
+- Update the chosen neighbor slot:
+  - set `router_id` to the sender router ID from `OspfHeader`
+  - set `ip_addr` to the source IPv4 address if the integration path provides
+    it; otherwise leave `0` in this milestone
+  - set `iface` to the `iface` argument
+  - set `last_hello_ts` to `scheduler_now(state->sim->sched)` when available,
+    otherwise `0`
+  - set `valid = 1`
+- If the received neighbor list contains `state->router_id`, set neighbor
+  state to `OSPF_NBR_FULL` for this simplified milestone.
+- Otherwise set neighbor state to `OSPF_NBR_INIT`.
+
+Simplified LSU receive order:
+
+- Verify that `pkt_len` is at least
+  `sizeof(OspfHeader) + sizeof(OspfLsuHeader)`.
+- Interpret the bytes after `OspfHeader` as `OspfLsuHeader`.
+- Convert `lsa_count` from network order to host order.
+- Starting after `OspfLsuHeader`, parse exactly `lsa_count` LSA records.
+- For each LSA:
+  - verify enough bytes remain for one `OspfLsaWire`
+  - convert `lsa_id`, `adv_router`, `seq_num`, `checksum`, and `link_count`
+    from network order to host order where applicable
+  - if `link_count > OSPF_MAX_LSA_LINKS`, reject the packet
+  - verify enough bytes remain for `link_count` `OspfLsaLink` records
+  - convert each link field from network order to host order
+  - search LSDB for a valid entry with the same `lsa_id` and `adv_router`
+  - if an existing LSDB entry has `seq_num >= received seq_num`, ignore this
+    received LSA
+  - otherwise store the received LSA in the existing slot or first invalid slot
+  - if an invalid LSDB slot is used, increment `lsdb_count` once
+  - if no LSDB slot is available, skip this LSA
+- If at least one LSA was stored as newer, flood each stored newer LSA to all
+  enabled OSPF interfaces except the receive interface.
+- If at least one LSA was stored as newer and `state->sim->sched != NULL`,
+  schedule SPF at `scheduler_now(state->sim->sched) + OSPF_SPF_DELAY_US`.
+
 ### `ospf_send_hello`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL || iface == NULL`, return `-1`.
 - If `state->sim == NULL`, return `-1`.
-- Build OSPF Hello packet:
-  - common header type `OSPF_TYPE_HELLO`
-  - router ID from state
-  - area ID from state
-  - network mask from interface prefix length
-  - hello interval and dead interval in seconds or documented wire units
-  - neighbor list from valid known neighbors on that interface
-- Send to `OSPF_ALLSPFROUTERS`.
+- Create a local byte buffer large enough for `OspfHeader`, `OspfHello`, and up
+  to `OSPF_MAX_NEIGHBORS` neighbor router IDs.
+- Write `OspfHeader` at the start of the buffer:
+  - `version = OSPF_VERSION`
+  - `type = OSPF_TYPE_HELLO`
+  - `router_id = state->router_id` in network byte order
+  - `area_id = state->area_id` in network byte order
+  - `checksum = 0` in this milestone
+  - `au_type = 0`
+  - `auth_data = 0`
+- Write `OspfHello` immediately after the common header:
+  - derive `network_mask` from `iface->prefix_len`
+  - write `hello_interval` as `OSPF_HELLO_INTERVAL_US / 1000000`
+  - write `dead_interval` as `OSPF_DEAD_INTERVAL_US / 1000000`
+  - set `options = 0`
+  - set `router_priority = 0`
+  - set `dr = 0`
+  - set `bdr = 0`
+- Append neighbor router IDs after `OspfHello`.
+- Include only valid neighbors whose `iface == iface`.
+- Convert each neighbor router ID to network byte order.
+- Set `pkt_len` to the actual OSPF payload length in network byte order after
+  the neighbor list is built.
+- Send to `OSPF_ALLSPFROUTERS` through IP output with protocol `IPPROTO_OSPF`
+  or numeric protocol `89`.
 - Return `0` on success, `-1` on failure.
 
-Current-stack warning: this requires a protocol-89 send path that can send
-link-local multicast. Do not route Hello packets through ordinary unicast
-forwarding.
+Do not route Hello packets through ordinary unicast forwarding. They are local
+control-plane packets sent to link-local multicast.
 
 ### `ospf_flood_lsa`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL || lsa == NULL`, return `-1`.
 - For each enabled OSPF interface:
@@ -530,25 +741,41 @@ Required behavior:
 
 ### `ospf_run_spf`
 
-Required behavior:
+Behavior summary:
+
+This milestone runs SPF over router-to-router links only. Stub/network routes
+can be added later when their LSA representation is fully specified.
+
+Implementation order:
 
 - If `state == NULL || state->router == NULL`, return `-1`.
-- Build a graph from valid LSDB entries.
+- Build a local graph from valid LSDB entries whose `lsa_type` is router-LSA.
+- Each graph node is a router ID from either `adv_router` or a point-to-point
+  `OspfLsaLink.link_id`.
+- Each graph edge comes from a link where `type == OSPF_LINK_P2P`.
+- Edge cost is the link metric.
+- Ignore `OSPF_LINK_TRANSIT` and `OSPF_LINK_STUB` in the first milestone.
 - Run Dijkstra from `state->router_id`.
+- Track for each reachable router:
+  - total cost from local router
+  - previous router in the SPF tree
+  - first-hop router after the local router
 - Flush old OSPF routes:
 
 ```c
 route_table_flush_proto(&state->router->route_tbl, ROUTE_PROTO_OSPF);
 ```
 
-- For each reachable destination represented by the LSDB:
-  - compute next-hop IP
-  - compute egress interface
-  - compute total cost
-  - install route with `ROUTE_PROTO_OSPF`
+- For each reachable remote router ID:
+  - find the OSPF neighbor whose `router_id` equals the first-hop router
+  - use that neighbor's `iface` as the egress interface
+  - use that neighbor's `ip_addr` as the next-hop IP
+  - install a `/32` route to the remote router ID with metric equal to total
+    SPF cost and protocol `ROUTE_PROTO_OSPF`
+- If the first-hop neighbor cannot be found or has no interface, skip that
+  route.
 - Return `0`.
 
-For the first milestone, SPF may install host routes to reachable router IDs.
 Network/stub route installation can be added after router-LSA link semantics
 are fully represented.
 
@@ -739,7 +966,7 @@ int ospf_enable_iface(OspfState *state, Interface *iface, uint16_t cost);
 
     behavior bad_ctx:
         assumes iface != \null && pkt != \null && ctx == \null;
-        assigns iface->rx_errors;
+        assigns \everything;
         ensures \result == -1;
 
     behavior valid:
@@ -747,12 +974,7 @@ int ospf_enable_iface(OspfState *state, Interface *iface, uint16_t cost);
         assumes pkt != \null;
         assumes ctx != \null;
         assumes ospf_state_well_formed((OspfState *)ctx);
-        assigns iface->rx_errors,
-                iface->rx_dropped,
-                ((OspfState *)ctx)->neighbors[0 .. 31],
-                ((OspfState *)ctx)->neighbor_count,
-                ((OspfState *)ctx)->lsdb[0 .. 255],
-                ((OspfState *)ctx)->lsdb_count;
+        assigns \everything;
         ensures \result == 0 || \result == -1;
 
     complete behaviors;
@@ -796,14 +1018,18 @@ int ospf_run_spf(OspfState *state);
     behavior valid:
         assumes e != \null && ctx != \null;
         assumes ospf_state_well_formed((OspfState *)ctx);
-        assigns ((OspfState *)ctx)->neighbors[0 .. 31],
-                ((OspfState *)ctx)->lsdb[0 .. 255],
-                ((OspfState *)ctx)->lsdb_count;
+        assigns \everything;
 */
 void ospf_hello_timer(const Event *e, void *ctx);
 void ospf_dead_timer(const Event *e, void *ctx);
 void ospf_spf_timer(const Event *e, void *ctx);
 ```
+
+`ospf_receive` and the timer handlers intentionally use `assigns \everything`
+for the paths that can free packets, send packets, flood LSAs, schedule events,
+or update Router/RouteTable state. Narrower contracts require precise modeled
+contracts for IP output, packet lifetime, scheduler insertion, and Router route
+updates first.
 
 ## KLEVA Verification Plan
 
@@ -836,8 +1062,8 @@ Minimum KLEVA tests:
 25. Dead timer marks stale neighbor down.
 26. Dead neighbor schedules SPF.
 27. OSPF protocol 89 receive path is covered by Router/IP integration test.
-28. OSPF multicast send path is covered by IP multicast or OSPF send-helper
-    test.
+28. OSPF multicast send path is covered by an IP multicast output integration
+    test for `224.0.0.5`.
 
 ## Common Mistakes
 
@@ -847,8 +1073,8 @@ Minimum KLEVA tests:
 - Do not write directly into route-table arrays.
 - Do not make forwarding read the LSDB.
 - Do not use milliseconds for scheduler timestamps.
-- Do not assume multicast `224.0.0.5` works until the IP/link send path
-  supports it.
+- Do not build Ethernet multicast MAC addresses in OSPF; IP output owns that
+  mapping.
 - Do not run SPF after every LSA immediately if a debounce timer is available.
 - Do not forget to flush old OSPF routes before installing new SPF results.
 - Do not free Router, Simulator, or interfaces from OSPF state.

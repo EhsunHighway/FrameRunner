@@ -276,28 +276,45 @@ void nat_gc_handler(const Event *e, void *ctx);
 ## Function Behavior
 
 Function behavior is an implementation contract. For simple functions, the
-required-behavior list is written in execution order unless the text explicitly
-says order does not matter. For non-trivial functions, especially functions with
-ownership transfer, queueing, lookup, selection, state-machine transitions, or
-packet forwarding, split the section into behavior summary, implementation
-order, and postconditions so the coder does not have to guess.
+`Implementation order` list is written in execution order unless the text
+explicitly says order does not matter. For non-trivial functions, especially
+functions with ownership transfer, queueing, lookup, selection, state-machine
+transitions, or packet forwarding, split the section into behavior summary,
+implementation order, and postconditions so the coder does not have to guess.
+Do not mix final-state facts into `Implementation order`; put them under
+`Postconditions` unless the implementation must check that fact at that exact
+point in control flow.
 
 
 ### `nat_init`
 
-Required behavior:
+Behavior summary:
+
+`nat_init` prepares caller-owned NAT state for one router/public interface and
+schedules garbage collection when a scheduler exists.
+
+Implementation order:
 
 - If `state == NULL`, return immediately.
 - Zero the NAT table.
-- Set `count = 0`.
 - Store `sim`, `router`, `public_ip`, and `public_iface`.
 - Set `next_port = NAT_PORT_START`.
-- If scheduler exists, schedule first NAT GC event at current time plus
-  `NAT_GC_INTERVAL_US`.
+- If `sim != NULL && sim->sched != NULL`, schedule first NAT GC event at
+  current scheduler time plus `NAT_GC_INTERVAL_US`.
+
+Postconditions after `state != NULL`:
+
+- `state->count == 0`.
+- Every NAT entry is invalid.
+- `state->sim == sim`.
+- `state->router == router`.
+- `state->public_ip == public_ip`.
+- `state->public_iface == public_iface`.
+- `state->next_port == NAT_PORT_START`.
 
 ### `nat_find_entry_outbound`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL`, return `NULL`.
 - If `private_ip == 0 || private_port == 0`, return `NULL`.
@@ -307,7 +324,7 @@ Required behavior:
 
 ### `nat_find_entry_inbound`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL`, return `NULL`.
 - If `public_port == 0`, return `NULL`.
@@ -317,7 +334,7 @@ Required behavior:
 
 ### `nat_outbound`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL || pkt == NULL`, return `-1`.
 - If `pkt->data == NULL || pkt->len < IP_HDR_LEN`, return `-1`.
@@ -327,9 +344,13 @@ Required behavior:
 - Read source IP and source port in host order.
 - Look up existing outbound entry.
 - If no entry exists:
-  - allocate a free NAT entry
+  - scan `entries[0 .. NAT_TABLE_SIZE - 1]` for the first unused NAT entry,
+    where unused means `entries[i].valid == 0`
+  - if no unused NAT entry exists, return `-1`
   - allocate a public port
+  - if no public port is available, return `-1`
   - fill private/public/protocol fields
+  - set that entry's `valid = 1`
   - set timeout based on protocol
   - increment count
 - Rewrite IPv4 source address to `state->public_ip`.
@@ -339,11 +360,9 @@ Required behavior:
 - Update TCP/UDP checksum when transport checksum support is enabled.
 - Return `0`.
 
-If the NAT table is full or no public port is available, return `-1`.
-
 ### `nat_inbound`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL || pkt == NULL`, return `-1`.
 - If `pkt->data == NULL || pkt->len < IP_HDR_LEN`, return `-1`.
@@ -363,7 +382,7 @@ Required behavior:
 
 ### `nat_gc`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL`, return `0`.
 - Scan all 512 entries.
@@ -375,7 +394,7 @@ Required behavior:
 
 ### `nat_checksum_update16`
 
-Required behavior:
+Implementation order:
 
 - Implement one's-complement incremental update for a 16-bit field:
 
@@ -391,7 +410,7 @@ updates or a full recompute.
 
 ### `nat_gc_handler`
 
-Required behavior:
+Implementation order:
 
 - If event or context is NULL, return.
 - Cast context to `NatState *`.

@@ -38,14 +38,31 @@ Good examples:
 
 Avoid vague concept sections that only restate function names.
 
+### Wire And Header Formats
+
+When a module defines bytes on the wire, the spec must show the packet or
+header format before the function behavior that parses or builds it.
+
+Use plain-text diagrams that match the C structs and constants. The diagram
+should identify:
+
+- field order
+- field width
+- where payload bytes begin
+- which multi-byte fields are network byte order
+- which fields are fixed, ignored, or simplified in this simulator
+
+This is required for protocol modules such as Ethernet, ARP, IPv4, ICMP, UDP,
+TCP, RIP, OSPF, BGP, EIGRP, and IS-IS. It is optional for internal-only data
+modules such as ARP cache, MAC table, route table, Host, Router, and CLI unless
+a visual layout would remove implementation ambiguity.
+
 ### Function Behavior Format
 
 Function behavior is the implementation contract. It is not only a behavior
 summary.
 
-For simple functions, a required-behavior list is acceptable when the order is
-obvious and the function has no tricky ownership, state-machine, lookup, or
-selection logic.
+For simple functions, an `Implementation order` list is acceptable when the order is obvious and the function has no tricky ownership, state-machine, lookup, or selection logic.
 
 For non-trivial functions, use this structure:
 
@@ -65,6 +82,9 @@ Definitions:
 
 When order matters, preserve order. Do not put a step early in the prose if it
 must happen later in code. If order does not matter, say that explicitly.
+Do not mix final-state facts into `Implementation order`; put them under
+`Postconditions` unless the implementation must check that fact at that exact
+point in control flow.
 
 Use exact names for important values and fields. Prefer:
 

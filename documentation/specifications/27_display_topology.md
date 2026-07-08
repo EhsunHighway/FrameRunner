@@ -218,16 +218,19 @@ Printing functions treat `FILE *out == NULL` as invalid input.
 ## Function Behavior
 
 Function behavior is an implementation contract. For simple functions, the
-required-behavior list is written in execution order unless the text explicitly
-says order does not matter. For non-trivial functions, especially functions with
-ownership transfer, queueing, lookup, selection, state-machine transitions, or
-packet forwarding, split the section into behavior summary, implementation
-order, and postconditions so the coder does not have to guess.
+`Implementation order` list is written in execution order unless the text
+explicitly says order does not matter. For non-trivial functions, especially
+functions with ownership transfer, queueing, lookup, selection, state-machine
+transitions, or packet forwarding, split the section into behavior summary,
+implementation order, and postconditions so the coder does not have to guess.
+Do not mix final-state facts into `Implementation order`; put them under
+`Postconditions` unless the implementation must check that fact at that exact
+point in control flow.
 
 
 ### `topology_view_sprint_ip`
 
-Required behavior:
+Implementation order:
 
 - If `buf == NULL`, return `-1`.
 - If `bufsz < 16`, return `-1`.
@@ -240,7 +243,7 @@ For an interface IP, callers pass `iface->ip_addr`, which is network order.
 
 ### `topology_view_sprint_mac`
 
-Required behavior:
+Implementation order:
 
 - If `mac == NULL || buf == NULL`, return `-1`.
 - If `bufsz < 18`, return `-1`.
@@ -250,7 +253,7 @@ Required behavior:
 
 ### `topology_view_print_iface`
 
-Required behavior:
+Implementation order:
 
 - If `iface == NULL || out == NULL`, return `-1`.
 - Format IP and MAC.
@@ -264,7 +267,7 @@ Required behavior:
 
 ### `topology_view_print_device`
 
-Required behavior:
+Implementation order:
 
 - If `dev == NULL || out == NULL`, return `-1`.
 - Print `[Device] name`.
@@ -278,7 +281,7 @@ Current type behavior: print `[Device]`, not `[Host]`, `[Router]`, or
 
 ### `topology_view_print_links`
 
-Required behavior:
+Implementation order:
 
 - If `topo == NULL || out == NULL`, return `-1`.
 - Print `Links:`.
@@ -296,7 +299,7 @@ Endpoint device name comes from `link->end_a->device->name` and
 
 ### `topology_view_print`
 
-Required behavior:
+Implementation order:
 
 - If `topo == NULL || out == NULL`, return `-1`.
 - Print header with device and link counts.

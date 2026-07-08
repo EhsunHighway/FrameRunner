@@ -210,16 +210,19 @@ or truncation.
 ## Function Behavior
 
 Function behavior is an implementation contract. For simple functions, the
-required-behavior list is written in execution order unless the text explicitly
-says order does not matter. For non-trivial functions, especially functions with
-ownership transfer, queueing, lookup, selection, state-machine transitions, or
-packet forwarding, split the section into behavior summary, implementation
-order, and postconditions so the coder does not have to guess.
+`Implementation order` list is written in execution order unless the text
+explicitly says order does not matter. For non-trivial functions, especially
+functions with ownership transfer, queueing, lookup, selection, state-machine
+transitions, or packet forwarding, split the section into behavior summary,
+implementation order, and postconditions so the coder does not have to guess.
+Do not mix final-state facts into `Implementation order`; put them under
+`Postconditions` unless the implementation must check that fact at that exact
+point in control flow.
 
 
 ### `header_view_print`
 
-Required behavior:
+Implementation order:
 
 - If `pkt == NULL || out == NULL`, return `-1`.
 - If `pkt->data == NULL && pkt->len > 0`, return `-1`.
@@ -243,7 +246,7 @@ Required behavior:
 
 ### `header_view_print_eth`
 
-Required behavior:
+Implementation order:
 
 - If `data == NULL || out == NULL`, return `-1`.
 - If `len < ETH_HDR_LEN`, print truncated Ethernet and return `-1`.
@@ -252,7 +255,7 @@ Required behavior:
 
 ### `header_view_print_arp`
 
-Required behavior:
+Implementation order:
 
 - If `data == NULL || out == NULL`, return `-1`.
 - If `len < sizeof(ArpPacket)`, print truncated ARP and return `-1`.
@@ -263,7 +266,7 @@ Required behavior:
 
 ### `header_view_print_ip`
 
-Required behavior:
+Implementation order:
 
 - If `data == NULL || out == NULL`, return `-1`.
 - If `len < IP_HDR_LEN`, print truncated IPv4 and return `-1`.
@@ -281,7 +284,7 @@ The display does not reject bad checksums. It may print whether
 
 ### `header_view_print_icmp`
 
-Required behavior:
+Implementation order:
 
 - If `data == NULL || out == NULL`, return `-1`.
 - If `len < ICMP_HDR_LEN`, print truncated ICMP and return `-1`.
@@ -290,7 +293,7 @@ Required behavior:
 
 ### `header_view_print_tcp`
 
-Required behavior:
+Implementation order:
 
 - If `data == NULL || out == NULL`, return `-1`.
 - If `len < TCP_HDR_LEN`, print truncated TCP and return `-1`.
@@ -302,7 +305,7 @@ Required behavior:
 
 ### `header_view_print_udp`
 
-Required behavior:
+Implementation order:
 
 - If `data == NULL || out == NULL`, return `-1`.
 - If `len < UDP_HDR_LEN`, print truncated UDP and return `-1`.
@@ -312,7 +315,7 @@ Required behavior:
 
 ### `header_view_detect_layer`
 
-Required behavior:
+Implementation order:
 
 - If `data == NULL`, return `HV_LAYER_UNKNOWN`.
 - If `offset >= len`, return `HV_LAYER_UNKNOWN`.

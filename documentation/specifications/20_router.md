@@ -310,21 +310,34 @@ of reaching into `router->route_tbl` directly.
 ## Function Behavior
 
 Function behavior is an implementation contract. For simple functions, the
-required-behavior list is written in execution order unless the text explicitly
-says order does not matter. For non-trivial functions, especially functions with
-ownership transfer, queueing, lookup, selection, state-machine transitions, or
-packet forwarding, split the section into behavior summary, implementation
-order, and postconditions so the coder does not have to guess.
+`Implementation order` list is written in execution order unless the text
+explicitly says order does not matter. For non-trivial functions, especially
+functions with ownership transfer, queueing, lookup, selection, state-machine
+transitions, or packet forwarding, split the section into behavior summary,
+implementation order, and postconditions so the coder does not have to guess.
+Do not mix final-state facts into `Implementation order`; put them under
+`Postconditions` unless the implementation must check that fact at that exact
+point in control flow.
 
 
 ### `router_create`
 
-Required behavior:
+Behavior summary:
+
+`router_create` allocates one Router, initializes embedded forwarding state, and
+returns a Router ready to accept interfaces and routes. If allocation fails, it
+releases anything already allocated and returns `NULL`.
+
+Implementation order:
 
 - If `name == NULL || sim == NULL`, return `NULL`.
 - Allocate and zero one Router.
+- If Router allocation fails, return `NULL`.
 - Copy `name` into `router->base.name` with termination.
 - Allocate `router->base.interfaces` with capacity `ROUTER_MAX_PORTS`.
+- If interface-array allocation fails:
+  - free the Router
+  - return `NULL`
 - Set `router->base.iface_count = 0`.
 - Set `router->base.iface_max = ROUTER_MAX_PORTS`.
 - Call `arp_cache_init(&router->arp_cache)`.
@@ -332,12 +345,21 @@ Required behavior:
 - Store borrowed simulator pointer in `router->sim`.
 - Return the Router.
 
-On allocation failure, release any owned allocation already made and return
-`NULL`.
+Postconditions after non-NULL return:
+
+- `router->sim == sim`.
+- `router->base.iface_count == 0`.
+- `router->base.iface_max == ROUTER_MAX_PORTS`.
+- `router->base.interfaces` has capacity `ROUTER_MAX_PORTS`.
+- `router->arp_cache` is initialized empty.
+- `router->route_tbl` is initialized empty.
+
+The allocation failure branches above must release only Router-owned state that
+has actually been created.
 
 ### `router_free`
 
-Required behavior:
+Implementation order:
 
 - If `router == NULL`, return.
 - Free each interface stored in `router->base.interfaces[0 .. iface_count - 1]`
@@ -350,7 +372,7 @@ are embedded.
 
 ### `router_add_interface`
 
-Required behavior:
+Implementation order:
 
 - If `router == NULL || iface == NULL`, return `-1`.
 - If the embedded Device interface array is full, return `-1`.
@@ -402,7 +424,7 @@ Successful `router_add_interface` must leave:
 
 ### `router_add_route`
 
-Required behavior:
+Implementation order:
 
 - If `router == NULL`, return `-1`.
 - Delegate to:
@@ -423,7 +445,7 @@ All IP values passed to route table are host order.
 
 ### `router_del_route`
 
-Required behavior:
+Implementation order:
 
 - If `router == NULL`, return `-1`.
 - Delegate to:
@@ -436,7 +458,7 @@ route_table_delete(&router->route_tbl, prefix, prefix_len, proto);
 
 ### `router_receive`
 
-Required behavior:
+Implementation order:
 
 - If `router == NULL || in_iface == NULL || pkt == NULL`, return `-1`.
 - If `router->sim == NULL`, free `pkt` and return `-1`.

@@ -280,6 +280,26 @@ offset  size  field
 20            payload begins
 ```
 
+Book-style view:
+
+```text
+0                   1                   2                   3
++-------------------+-------------------+-------------------+-------------------+
+| source port                           | destination port                      |
++-------------------+-------------------+-------------------+-------------------+
+| sequence number                                                               |
++-------------------------------------------------------------------------------+
+| acknowledgment number                                                         |
++-------------------------------------------------------------------------------+
+| data offset + flags                  | window                                |
++-------------------+-------------------+-------------------+-------------------+
+| checksum                              | urgent pointer                        |
++-------------------+-------------------+-------------------+-------------------+
+| payload begins ...                                                            |
++-------------------------------------------------------------------------------+
+  20-byte TCP header when data offset == 5
+```
+
 All TCP header integer fields are network byte order on the wire.
 
 `data_off_flags` in host order:
@@ -475,32 +495,44 @@ void tcp_retransmit_handler(const Event *e, void *ctx);
 ## Function Behavior
 
 Function behavior is an implementation contract. For simple functions, the
-required-behavior list is written in execution order unless the text explicitly
-says order does not matter. For non-trivial functions, especially functions with
-ownership transfer, queueing, lookup, selection, state-machine transitions, or
-packet forwarding, split the section into behavior summary, implementation
-order, and postconditions so the coder does not have to guess.
+`Implementation order` list is written in execution order unless the text
+explicitly says order does not matter. For non-trivial functions, especially
+functions with ownership transfer, queueing, lookup, selection, state-machine
+transitions, or packet forwarding, split the section into behavior summary,
+implementation order, and postconditions so the coder does not have to guess.
+Do not mix final-state facts into `Implementation order`; put them under
+`Postconditions` unless the implementation must check that fact at that exact
+point in control flow.
 
 
 ### `tcp_init`
 
-Required behavior:
+Behavior summary:
+
+`tcp_init` prepares caller-owned TCP table storage so no TCP control blocks are
+active.
+
+Implementation order:
 
 - If `table == NULL`, return immediately.
 - Zero the whole table.
 
-After this, `table->count == 0` and every TCB slot has `valid == 0`.
+Postconditions after `table != NULL`:
+
+- `table->count == 0`.
+- Every TCB slot has `valid == 0`.
 
 ### `tcp_listen`
 
-Required behavior:
+Implementation order:
 
 - If `table == NULL`, return `NULL`.
 - If `local_port == 0`, return `NULL`.
 - If a listener already exists for the same `local_ip` and `local_port`, return
   `NULL`.
-- Allocate the first invalid TCB slot.
-- If the table is full, return `NULL`.
+- Scan `tcbs[0 .. TCP_MAX_CONNS - 1]` for the first unused TCB slot, where
+  unused means `tcbs[i].valid == 0`.
+- If no unused TCB slot exists, return `NULL`.
 - Initialize a listener:
   - `local_ip = local_ip`
   - `local_port = local_port`
@@ -515,13 +547,17 @@ Required behavior:
 
 ### `tcp_connect`
 
-Required behavior:
+Implementation order:
 
 - Reject NULL simulator or table.
 - Reject zero local IP, remote IP, local port, or remote port.
 - Reject duplicate exact four-tuple.
-- Allocate a TCB.
+- Scan `tcbs[0 .. TCP_MAX_CONNS - 1]` for the first unused TCB slot, where
+  unused means `tcbs[i].valid == 0`.
+- If no unused TCB slot exists, return `NULL`.
 - Initialize active-open state:
+  - mark the TCB valid
+  - local and remote IP/port fields from arguments
   - state `TCP_SYN_SENT`
   - `snd_una = 0`
   - `snd_nxt = 1`
@@ -534,29 +570,30 @@ Required behavior:
   - flags `TCP_FLAG_SYN`
   - no payload
   - clone requested for retransmission
+- If SYN send fails:
+  - clear the allocated TCB slot
+  - return `NULL`
 - Track the SYN clone as sequence range `[0, 1)`.
 - If `sim->sched != NULL`, schedule retransmission.
 - Return the TCB.
 
-On any local failure after allocating the TCB, release the TCB and return
-`NULL`.
-
 ### `tcp_send`
 
-Required behavior:
+Implementation order:
 
 - If `sim == NULL || tcb == NULL`, return `-1`.
 - If `tcb->valid != 1`, return `-1`.
 - If `tcb->state != TCP_ESTABLISHED`, return `-1`.
 - If `len > 0 && data == NULL`, return `-1`.
 - If `len == 0`, return `0`.
-- Send at most `TCP_MSS` bytes from `data`.
 - If any unacknowledged segment exists, return `-1`.
+- Compute `send_len = min(len, TCP_MSS)`.
 - Send data with:
   - `seq = old snd_nxt`
   - `ack = rcv_nxt`
   - flags `TCP_FLAG_ACK | TCP_FLAG_PSH`
   - clone requested for retransmission
+- If send fails, return `-1`.
 - Track the clone as `[old_snd_nxt, old_snd_nxt + send_len)`.
 - Advance `snd_nxt` by `send_len`.
 - If `sim->sched != NULL`, schedule retransmission.
@@ -682,7 +719,7 @@ Unhandled state or unaccepted segment:
 
 ### `tcp_close`
 
-Required behavior:
+Implementation order:
 
 - If `sim == NULL || tcb == NULL`, return `-1`.
 - If `tcb->valid != 1`, return `-1`.
@@ -703,7 +740,7 @@ Required behavior:
 
 ### `tcp_retransmit_handler`
 
-Required behavior:
+Implementation order:
 
 - If event is NULL, return.
 - If context is NULL or lacks simulator/table, return.

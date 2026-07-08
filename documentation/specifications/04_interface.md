@@ -306,16 +306,19 @@ void           interface_set_arp_cache(Interface *iface,
 ## Function Behavior
 
 Function behavior is an implementation contract. For simple functions, the
-required-behavior list is written in execution order unless the text explicitly
-says order does not matter. For non-trivial functions, especially functions with
-ownership transfer, queueing, lookup, selection, state-machine transitions, or
-packet forwarding, split the section into behavior summary, implementation
-order, and postconditions so the coder does not have to guess.
+`Implementation order` list is written in execution order unless the text
+explicitly says order does not matter. For non-trivial functions, especially
+functions with ownership transfer, queueing, lookup, selection, state-machine
+transitions, or packet forwarding, split the section into behavior summary,
+implementation order, and postconditions so the coder does not have to guess.
+Do not mix final-state facts into `Implementation order`; put them under
+`Postconditions` unless the implementation must check that fact at that exact
+point in control flow.
 
 
 ### `interface_create`
 
-Required behavior:
+Implementation order:
 
 - Caller must pass non-NULL `name`.
 - Caller must pass non-NULL `mac`.
@@ -343,7 +346,7 @@ Required behavior:
 
 ### `interface_free`
 
-Required behavior:
+Implementation order:
 
 - If `iface == NULL`, return immediately.
 - Free the interface object.
@@ -351,7 +354,7 @@ Required behavior:
 
 ### `interface_set_up`
 
-Required behavior:
+Implementation order:
 
 - If `iface == NULL`, return without changing state.
 - Otherwise set `iface->up = up`.
@@ -360,7 +363,7 @@ This function does not change `iface->state`.
 
 ### `interface_is_up`
 
-Required behavior:
+Implementation order:
 
 - If `iface == NULL`, return `0`.
 - If `iface->up != 0`, return `1`.
@@ -368,7 +371,7 @@ Required behavior:
 
 ### `interface_set_link`
 
-Required behavior:
+Implementation order:
 
 - If `iface == NULL`, return without changing state.
 - Otherwise set `iface->link = link`.
@@ -377,14 +380,14 @@ The link pointer is borrowed.
 
 ### `interface_get_link`
 
-Required behavior:
+Implementation order:
 
 - If `iface == NULL`, return `NULL`.
 - Otherwise return `iface->link`.
 
 ### `interface_get_mac`
 
-Required behavior:
+Implementation order:
 
 - Caller must pass a valid interface.
 - Return `iface->mac`.
@@ -394,14 +397,14 @@ it.
 
 ### `interface_get_ip`
 
-Required behavior:
+Implementation order:
 
 - Caller must pass a valid interface.
 - Return `iface->ip_addr`.
 
 ### `interface_add_tx_bytes`
 
-Required behavior:
+Implementation order:
 
 - If `iface == NULL`, return without changing state.
 - Otherwise add `n` to `iface->tx_bytes`.
@@ -410,7 +413,7 @@ The current implementation does not check overflow.
 
 ### `interface_add_rx_bytes`
 
-Required behavior:
+Implementation order:
 
 - If `iface == NULL`, return without changing state.
 - Otherwise add `n` to `iface->rx_bytes`.
@@ -419,7 +422,7 @@ The current implementation does not check overflow.
 
 ### `interface_set_rx_handler`
 
-Required behavior:
+Implementation order:
 
 - If `iface == NULL`, return without changing state.
 - Otherwise set:
@@ -430,7 +433,7 @@ Required behavior:
 
 ### `interface_set_arp_cache`
 
-Required behavior:
+Implementation order:
 
 - If `iface == NULL`, return without changing state.
 - Otherwise set `iface->arp_cache = cache`.

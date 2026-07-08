@@ -13,7 +13,8 @@
 #define UDP_PORT_RIP      520
 
 typedef struct UdpSocket UdpSocket;
-typedef void (*Udp_Recv_Handler)(uint32_t src_ip,
+typedef void (*Udp_Recv_Handler)(Interface *iface,
+                                 uint32_t   src_ip,
                                  uint16_t src_port,
                                  Packet  *payload,
                                  void    *ctx);

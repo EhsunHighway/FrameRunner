@@ -221,16 +221,19 @@ int       topology_link_count(const Topology *topo);
 ## Function Behavior
 
 Function behavior is an implementation contract. For simple functions, the
-required-behavior list is written in execution order unless the text explicitly
-says order does not matter. For non-trivial functions, especially functions with
-ownership transfer, queueing, lookup, selection, state-machine transitions, or
-packet forwarding, split the section into behavior summary, implementation
-order, and postconditions so the coder does not have to guess.
+`Implementation order` list is written in execution order unless the text
+explicitly says order does not matter. For non-trivial functions, especially
+functions with ownership transfer, queueing, lookup, selection, state-machine
+transitions, or packet forwarding, split the section into behavior summary,
+implementation order, and postconditions so the coder does not have to guess.
+Do not mix final-state facts into `Implementation order`; put them under
+`Postconditions` unless the implementation must check that fact at that exact
+point in control flow.
 
 
 ### `topology_create`
 
-Required behavior:
+Implementation order:
 
 - Allocate one `Topology`.
 - If allocation fails, return `NULL`.
@@ -239,9 +242,12 @@ Required behavior:
 - Set `link_count == 0`.
 - Set `link_cap == 8`.
 - Allocate `dev_cap` device pointer slots.
+- If device-pointer array allocation fails:
+  - free the topology
+  - return `NULL`
 - Allocate `link_cap` link pointer slots.
-- If either array allocation fails:
-  - free any array that was allocated
+- If link-pointer array allocation fails:
+  - free the device-pointer array
   - free the topology
   - return `NULL`
 - Return the topology.
@@ -250,7 +256,7 @@ Unused pointer slots are not initialized by the current implementation.
 
 ### `topology_free`
 
-Required behavior:
+Implementation order:
 
 - If `topo == NULL`, return immediately.
 - Free live devices from index `0` to `dev_count - 1`.
@@ -263,7 +269,7 @@ The current free order is devices first, then links.
 
 ### `topology_add_device`
 
-Required behavior:
+Implementation order:
 
 - If `topo == NULL`, return `-1`.
 - If `dev == NULL`, return `-1`.
@@ -277,7 +283,7 @@ The current implementation does not reject duplicate device names.
 
 ### `topology_add_link`
 
-Required behavior:
+Implementation order:
 
 - If `topo == NULL`, return `-1`.
 - If `link == NULL`, return `-1`.
@@ -291,7 +297,7 @@ The current implementation does not reject duplicate links.
 
 ### `topology_find_device_by_name`
 
-Required behavior:
+Implementation order:
 
 - If `topo == NULL`, return `NULL`.
 - If `name == NULL`, return `NULL`.
@@ -301,7 +307,7 @@ Required behavior:
 
 ### `topology_find_device_by_ip`
 
-Required behavior:
+Implementation order:
 
 - If `topo == NULL`, return `NULL`.
 - For each live device:
@@ -313,7 +319,7 @@ The comparison uses the stored integer IP value exactly.
 
 ### `topology_get_link_between`
 
-Required behavior:
+Implementation order:
 
 - If `topo == NULL`, return `NULL`.
 - If `iface_a == NULL`, return `NULL`.
@@ -328,14 +334,14 @@ The comparison uses interface pointer identity.
 
 ### `topology_device_count`
 
-Required behavior:
+Implementation order:
 
 - If `topo == NULL`, return `0`.
 - Otherwise return `topo->dev_count`.
 
 ### `topology_link_count`
 
-Required behavior:
+Implementation order:
 
 - If `topo == NULL`, return `0`.
 - Otherwise return `topo->link_count`.

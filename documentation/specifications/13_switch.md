@@ -281,18 +281,21 @@ Interface *switch_get_port_by_name(Switch *sw, const char *name);
 ## Function Behavior
 
 Function behavior is an implementation contract. For simple functions, the
-required-behavior list is written in execution order unless the text explicitly
-says order does not matter. For non-trivial functions, especially functions with
-ownership transfer, queueing, lookup, selection, state-machine transitions, or
-packet forwarding, split the section into behavior summary, implementation
-order, and postconditions so the coder does not have to guess.
+`Implementation order` list is written in execution order unless the text
+explicitly says order does not matter. For non-trivial functions, especially
+functions with ownership transfer, queueing, lookup, selection, state-machine
+transitions, or packet forwarding, split the section into behavior summary,
+implementation order, and postconditions so the coder does not have to guess.
+Do not mix final-state facts into `Implementation order`; put them under
+`Postconditions` unless the implementation must check that fact at that exact
+point in control flow.
 
 
 ### `mac_age_handler`
 
 This function is static inside `switch.c`.
 
-Required behavior:
+Implementation order:
 
 - Ignore the event pointer.
 - Cast `ctx` to `Switch *`.
@@ -314,7 +317,7 @@ This is per-switch callback scheduling, not a global fallback handler.
 
 This function is static inside `switch.c`.
 
-Required behavior:
+Implementation order:
 
 - Cast `ctx` to `Switch *`.
 - If `sw == NULL`, return.
@@ -324,7 +327,7 @@ Required behavior:
 
 ### `switch_create`
 
-Required behavior:
+Implementation order:
 
 - If `name == NULL`, return `NULL`.
 - If `sim == NULL`, return `NULL`.
@@ -340,20 +343,22 @@ Required behavior:
 - Set `port_count == 0`.
 - Set `sim == sim`.
 - Initialize `mac_tbl`.
+- If `sim->sched == NULL`, call `device_free((Device *)sw)` and return `NULL`.
 - Create the first `EVT_MAC_AGE` callback event for
   `sim->sched->now + SW_AGE_INTERVAL`.
-- If event creation fails or scheduling fails:
-  - free the event if it exists
+- If event creation fails:
+  - call `device_free((Device *)sw)`
+  - return `NULL`
+- Schedule the first age event.
+- If scheduling fails:
+  - free the event
   - call `device_free((Device *)sw)`
   - return `NULL`
 - Return the switch.
 
-Current implementation assumes `sim->sched` is valid. It does not check
-`sim->sched == NULL`.
-
 ### `switch_free`
 
-Required behavior:
+Implementation order:
 
 - If `sw == NULL`, return immediately.
 - Call `device_free((Device *)sw)`.
@@ -362,7 +367,7 @@ Do not free `sw` again after this call.
 
 ### `switch_add_port`
 
-Required behavior:
+Implementation order:
 
 - If `sw == NULL`, return `-1`.
 - If `iface == NULL`, return `-1`.
@@ -380,7 +385,7 @@ Required behavior:
 
 ### `switch_receive`
 
-Required behavior:
+Implementation order:
 
 - If `sw == NULL`, return immediately.
 - If `in_port == NULL`, return immediately.
@@ -430,7 +435,7 @@ before calling `ethernet_send`.
 
 ### `switch_port_down`
 
-Required behavior:
+Implementation order:
 
 - If `sw == NULL`, return immediately.
 - If `port == NULL`, return immediately.
@@ -439,7 +444,7 @@ Required behavior:
 
 ### `switch_get_port_by_name`
 
-Required behavior:
+Implementation order:
 
 - If `sw == NULL`, return `NULL`.
 - If `name == NULL`, return `NULL`.

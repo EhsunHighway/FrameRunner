@@ -38,6 +38,94 @@ backward when a header is prepended and forward when a header is stripped.
 `capacity` is the usable payload capacity after the fixed headroom. It does not
 include the 64 bytes of headroom.
 
+### Internal Buffer Layout
+
+This is an internal memory layout, not a network header format.
+
+At creation:
+
+```text
+head
+ |
+ v
++----------------------+--------------------------------+
+| headroom             | usable capacity                |
+| PKT_HEADROOM bytes   | capacity bytes                 |
++----------------------+--------------------------------+
+                       ^
+                       |
+                      data
+
+len == 0
+data == head + PKT_HEADROOM
+```
+
+After the caller writes or constructs visible payload bytes:
+
+```text
+head
+ |
+ v
++----------------------+----------------------+----------+
+| unused headroom      | visible bytes        | unused   |
++----------------------+----------------------+----------+
+                       ^                      ^
+                       |                      |
+                      data                 data + len
+
+len == number of visible bytes
+```
+
+After `packet_prepend(p, header, header_len)` succeeds:
+
+```text
+before:
+
++----------------------+----------------------+
+| unused headroom      | visible bytes        |
++----------------------+----------------------+
+                       ^
+                       |
+                      old data
+
+after:
+
++-------------------+------------------------+----------------------+
+| unused headroom   | prepended header bytes | old visible bytes    |
++-------------------+------------------------+----------------------+
+                    ^
+                    |
+                   new data
+
+new data == old data - header_len
+new len  == old len + header_len
+```
+
+After `packet_strip(p, header_len)` succeeds:
+
+```text
+before:
+
++-------------------+------------------------+----------------------+
+| old headroom      | header being stripped  | remaining bytes      |
++-------------------+------------------------+----------------------+
+                    ^
+                    |
+                   old data
+
+after:
+
++-------------------+------------------------+----------------------+
+| old headroom      | stripped bytes remain  | visible bytes        |
++-------------------+------------------------+----------------------+
+                                             ^
+                                             |
+                                            new data
+
+new data == old data + header_len
+new len  == old len - header_len
+```
+
 ### Why Headroom Exists
 
 When an application or transport layer creates a payload, lower layers still
@@ -226,20 +314,26 @@ void     packet_dump(const Packet *p);
 ## Function Behavior
 
 Function behavior is an implementation contract. For simple functions, the
-required-behavior list is written in execution order unless the text explicitly
-says order does not matter. For non-trivial functions, especially functions with
-ownership transfer, queueing, lookup, selection, state-machine transitions, or
-packet forwarding, split the section into behavior summary, implementation
-order, and postconditions so the coder does not have to guess.
+`Implementation order` list is written in execution order unless the text
+explicitly says order does not matter. For non-trivial functions, especially
+functions with ownership transfer, queueing, lookup, selection, state-machine
+transitions, or packet forwarding, split the section into behavior summary,
+implementation order, and postconditions so the coder does not have to guess.
+Do not mix final-state facts into `Implementation order`; put them under
+`Postconditions` unless the implementation must check that fact at that exact
+point in control flow.
 
 
 ### `packet_create`
 
-Required behavior:
+Implementation order:
 
 - Allocate a `Packet`.
+- If `Packet` allocation fails, return `NULL`.
 - Allocate `PKT_HEADROOM + capacity` bytes for `head`.
-- If either allocation fails, return `NULL` and leak nothing from this call.
+- If `head` allocation fails:
+  - free the `Packet`
+  - return `NULL`
 - Set `data == head + PKT_HEADROOM`.
 - Set `len == 0`.
 - Set `capacity == capacity`.
@@ -252,38 +346,46 @@ zero-capacity packet creation as outside the supported API.
 
 ### `packet_prepend`
 
-Required behavior:
+Implementation order:
 
 - Caller must pass a valid packet.
 - Caller must pass a readable `header` buffer of `header_len` bytes.
 - If available headroom before `data` is smaller than `header_len`, return `-1`.
-- On failure, leave `data` and `len` unchanged.
-- On success:
-  - move `data` backward by `header_len`
-  - increase `len` by `header_len`
-  - copy `header_len` bytes from `header` into the new bytes at `data`
-  - return `0`
+- Move `data` backward by `header_len`.
+- Increase `len` by `header_len`.
+- Copy `header_len` bytes from `header` into the new bytes at `data`.
+- Return `0`.
+
+Postconditions:
+
+- On headroom failure, `data` and `len` are unchanged.
+- On success, `data` points to the prepended header bytes and `len` increased
+  by `header_len`.
 
 The function does not check whether `header` is `NULL`. A nonzero
 `header_len` with a bad header pointer is caller error.
 
 ### `packet_strip`
 
-Required behavior:
+Implementation order:
 
 - Caller must pass a valid packet.
 - If `header_len > len`, return `-1`.
-- On failure, leave `data` and `len` unchanged.
-- On success:
-  - move `data` forward by `header_len`
-  - decrease `len` by `header_len`
-  - return `0`
+- Move `data` forward by `header_len`.
+- Decrease `len` by `header_len`.
+- Return `0`.
+
+Postconditions:
+
+- On too-large `header_len`, `data` and `len` are unchanged.
+- On success, `data` advanced by `header_len` and `len` decreased by
+  `header_len`.
 
 `header_len == 0` is accepted by the implementation and is a no-op success.
 
 ### `packet_clone`
 
-Required behavior:
+Implementation order:
 
 - Caller must pass a valid source packet.
 - Allocate a new packet with capacity equal to `p->len`.
@@ -298,7 +400,7 @@ clone independently.
 
 ### `packet_free`
 
-Required behavior:
+Implementation order:
 
 - If `p == NULL`, return immediately.
 - Free `p->head`.
@@ -308,7 +410,7 @@ The function must not free `p->data`.
 
 ### `packet_checksum`
 
-Required behavior:
+Implementation order:
 
 - Caller must pass a readable byte range of `len` bytes.
 - Sum 16-bit words until fewer than two bytes remain.
@@ -320,7 +422,7 @@ The implementation currently requires `len > 0` in its ACSL contract.
 
 ### `packet_dump`
 
-Required behavior:
+Implementation order:
 
 - Caller must pass a valid packet.
 - Print packet id, length, layer, and visible data bytes.

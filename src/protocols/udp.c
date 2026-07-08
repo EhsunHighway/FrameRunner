@@ -173,7 +173,8 @@ int  udp_receive(Interface *iface,
                 return -1;
             }
             pkt->layer = 5;
-            udp_ctx->state->sockets[i].recv_handler(src_ip,
+            udp_ctx->state->sockets[i].recv_handler(iface,
+                                                    src_ip,
                                                     src_port,
                                                     pkt,
                                                     udp_ctx->state->sockets[i].ctx);

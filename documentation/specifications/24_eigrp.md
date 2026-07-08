@@ -105,9 +105,10 @@ Do not treat local EIGRP packets as ordinary transit packets.
 
 EIGRP uses multicast `224.0.0.10`.
 
-Current `ip_output` does not guarantee multicast output. The implementation
-must either add multicast support to IP/link output or use an EIGRP-specific
-link-local send helper that still follows packet ownership rules.
+The IP module owns IPv4 multicast-to-Ethernet multicast mapping. EIGRP send
+code should send through IP output with protocol `IPPROTO_EIGRP`/`88` and
+destination `EIGRP_MULTICAST`; it should not build Ethernet multicast frames
+itself.
 
 ## Purpose
 
@@ -204,6 +205,24 @@ Header length is `20` bytes.
 
 Multi-byte fields are network byte order on the wire.
 
+Wire layout:
+
+```text
+0                   1                   2                   3
++-------------------+-------------------+-------------------+-------------------+
+| version           | opcode            | checksum                              |
++-------------------+-------------------+-------------------+-------------------+
+| flags                                                                         |
++-------------------------------------------------------------------------------+
+| sequence number                                                               |
++-------------------------------------------------------------------------------+
+| acknowledgment number                                                         |
++-------------------------------------------------------------------------------+
+| autonomous-system number                                                      |
++-------------------------------------------------------------------------------+
+  20-byte EIGRP header
+```
+
 ### `EigrpRoute`
 
 ```c
@@ -219,6 +238,26 @@ typedef struct __attribute__((packed)) EigrpRoute {
 ```
 
 Route entries are used in UPDATE, QUERY, and REPLY messages.
+
+Wire layout for the simplified route entry:
+
+```text
+0                   1                   2                   3
++-------------------+-------------------+-------------------+-------------------+
+| prefix_len        | reserved / pad                                           |
++-------------------+-------------------+-------------------+-------------------+
+| prefix                                                                        |
++-------------------------------------------------------------------------------+
+| bandwidth                                                                     |
++-------------------------------------------------------------------------------+
+| delay                                                                         |
++-------------------------------------------------------------------------------+
+| metric                                                                        |
++-------------------------------------------------------------------------------+
+| next_hop                                                                      |
++-------------------------------------------------------------------------------+
+  24-byte simplified route entry
+```
 
 ### `EigrpIface`
 
@@ -358,37 +397,60 @@ the router control-plane dispatch mechanism.
 ## Function Behavior
 
 Function behavior is an implementation contract. For simple functions, the
-required-behavior list is written in execution order unless the text explicitly
-says order does not matter. For non-trivial functions, especially functions with
-ownership transfer, queueing, lookup, selection, state-machine transitions, or
-packet forwarding, split the section into behavior summary, implementation
-order, and postconditions so the coder does not have to guess.
+`Implementation order` list is written in execution order unless the text
+explicitly says order does not matter. For non-trivial functions, especially
+functions with ownership transfer, queueing, lookup, selection, state-machine
+transitions, or packet forwarding, split the section into behavior summary,
+implementation order, and postconditions so the coder does not have to guess.
+Do not mix final-state facts into `Implementation order`; put them under
+`Postconditions` unless the implementation must check that fact at that exact
+point in control flow.
 
 
 ### `eigrp_init`
 
-Required behavior:
+Behavior summary:
+
+`eigrp_init` prepares caller-owned EIGRP state for one router and schedules the
+first Hello timer when a scheduler exists.
+
+Implementation order:
 
 - If `state == NULL`, return immediately.
 - Zero all EIGRP state.
 - Store simulator, router, AS number, and router ID.
 - Set `next_seq = 1`.
-- Initialize counts to zero.
-- If scheduler exists, schedule first Hello event at
+- If `sim != NULL && sim->sched != NULL`, schedule first Hello event at
   `scheduler_now(sim->sched) + EIGRP_HELLO_US`.
+
+Postconditions after `state != NULL`:
+
+- Neighbor count is `0`.
+- Topology-entry count is `0`.
+- Interface count is `0`.
+- `state->sim == sim`.
+- `state->router == router`.
+- `state->asn == asn`.
+- `state->router_id == router_id`.
+- `state->next_seq == 1`.
 
 Protocol `88` registration may be done by the Router/control-plane owner rather
 than by `eigrp_init`, because `eigrp_init` may not own the IP stack.
 
 ### `eigrp_enable_iface`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL || iface == NULL`, return `-1`.
 - If `bandwidth_kbps == 0`, return `-1`.
 - If interface is already enabled, update bandwidth and delay and return `0`.
 - If interface table is full, return `-1`.
-- Store interface, bandwidth, and delay.
+- Scan `state->ifaces[0 .. EIGRP_MAX_IFACES - 1]` for the first unused slot,
+  where unused means `state->ifaces[i].valid == 0`.
+- Store `iface` in that slot's `iface` field.
+- Store `bandwidth_kbps` in that slot's `bandwidth_kbps` field.
+- Store `delay_us` in that slot's `delay_us` field.
+- Set that slot's `valid = 1`.
 - Increment interface count.
 - Return `0`.
 
@@ -396,7 +458,7 @@ EIGRP does not take ownership of the interface.
 
 ### `eigrp_compute_metric`
 
-Required behavior:
+Implementation order:
 
 - If `bandwidth_kbps == 0`, return `EIGRP_INFINITY`.
 - Compute:
@@ -410,7 +472,7 @@ Required behavior:
 
 ### `eigrp_receive`
 
-Required behavior:
+Implementation order:
 
 - If `iface == NULL`, return `-1`.
 - If `pkt == NULL`, increment `iface->rx_errors` and return `-1`.
@@ -433,20 +495,21 @@ Required behavior:
 
 ### `eigrp_send_hello`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL || iface == NULL`, return `-1`.
 - If `state->sim == NULL`, return `-1`.
 - Build EIGRP Hello packet.
-- Send to `EIGRP_MULTICAST`.
+- Send to `EIGRP_MULTICAST` through IP output with protocol `IPPROTO_EIGRP` or
+  numeric protocol `88`.
 - Return `0` on success, `-1` on failure.
 
-Current-stack warning: this requires protocol-88 multicast output support or an
-EIGRP-specific link-local send helper.
+Do not route Hello packets through ordinary unicast forwarding. They are local
+control-plane packets sent to link-local multicast.
 
 ### `eigrp_send_update`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL || iface == NULL`, return `-1`.
 - If `routes == NULL && route_count > 0`, return `-1`.
@@ -458,7 +521,7 @@ Required behavior:
 
 ### `eigrp_dual_process`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL || nbr == NULL`, return `-1`.
 - If `prefix_len > 32`, return `-1`.
@@ -761,7 +824,8 @@ Minimum KLEVA tests:
 24. Hold timer invalidates stale neighbor.
 25. Neighbor loss reprocesses affected routes.
 26. EIGRP protocol 88 receive path is covered by Router/IP integration test.
-27. EIGRP multicast send path is covered by IP multicast or send-helper test.
+27. EIGRP multicast send path is covered by an IP multicast output integration
+    test for `224.0.0.10`.
 
 ## Common Mistakes
 
@@ -772,5 +836,6 @@ Minimum KLEVA tests:
 - Do not install an infeasible route that fails `reported_distance < fd`.
 - Do not divide by zero in metric computation.
 - Do not use milliseconds for scheduler timestamps.
-- Do not assume multicast `224.0.0.10` works until the send path supports it.
+- Do not build Ethernet multicast MAC addresses in EIGRP; IP output owns that
+  mapping.
 - Do not free Router, Simulator, or interfaces from EIGRP state.

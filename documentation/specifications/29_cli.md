@@ -265,36 +265,41 @@ Handlers belong in `commands.c` and are declared in `commands.h`.
 ## Function Behavior
 
 Function behavior is an implementation contract. For simple functions, the
-required-behavior list is written in execution order unless the text explicitly
-says order does not matter. For non-trivial functions, especially functions with
-ownership transfer, queueing, lookup, selection, state-machine transitions, or
-packet forwarding, split the section into behavior summary, implementation
-order, and postconditions so the coder does not have to guess.
+`Implementation order` list is written in execution order unless the text
+explicitly says order does not matter. For non-trivial functions, especially
+functions with ownership transfer, queueing, lookup, selection, state-machine
+transitions, or packet forwarding, split the section into behavior summary,
+implementation order, and postconditions so the coder does not have to guess.
+Do not mix final-state facts into `Implementation order`; put them under
+`Postconditions` unless the implementation must check that fact at that exact
+point in control flow.
 
 
 ### `cli_create`
 
-Required behavior:
+Implementation order:
 
 - If `sim == NULL || in == NULL || out == NULL`, return `NULL`.
 - Allocate and zero `CliState`.
+- If allocation fails, return `NULL`.
 - Store borrowed pointers.
 - Set `running = 1`.
 - Register built-in commands.
+- If command registration fails:
+  - free the CLI state
+  - return `NULL`
 - Return CLI state.
-
-On allocation or registration failure, free the state and return `NULL`.
 
 ### `cli_free`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL`, return.
 - Free only `state`.
 
 ### `cli_register`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL || name == NULL || handler == NULL`, return `-1`.
 - If command table is full, return `-1`.
@@ -307,7 +312,7 @@ Required behavior:
 
 ### `cli_find_command`
 
-Required behavior:
+Implementation order:
 
 - If state, argv, or matched_words is NULL, return NULL.
 - Search registered commands.
@@ -331,7 +336,7 @@ winner:
 
 ### `cli_exec_line`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL || line == NULL`, return `-1`.
 - Strip trailing newline and carriage return.
@@ -346,7 +351,7 @@ Required behavior:
 
 ### `cli_loop`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL`, return `-1`.
 - Set `running = 1`.
@@ -358,7 +363,7 @@ Required behavior:
 
 ### `cmd_show_topology`
 
-Required behavior:
+Implementation order:
 
 - If `state->sim == NULL || state->sim->topo == NULL`, return `-1`.
 - Call `topology_view_print(state->sim->topo, state->out)`.
@@ -366,7 +371,7 @@ Required behavior:
 
 ### `cmd_show_interfaces`
 
-Required behavior:
+Implementation order:
 
 - With no device argument, print every device and interface.
 - With device argument, find device by name and print its interfaces.
@@ -375,7 +380,7 @@ Required behavior:
 
 ### `cmd_show_arp`
 
-Required behavior:
+Implementation order:
 
 - If no device argument, print a clear "device required" usage error until a
   topology-wide ARP cache iterator exists.
@@ -389,7 +394,7 @@ name.
 
 ### `cmd_show_route`
 
-Required behavior:
+Implementation order:
 
 - With device argument, find device.
 - If device is a Router with route table access, print route table.
@@ -398,7 +403,7 @@ Required behavior:
 
 ### `cmd_ping`
 
-Required behavior:
+Implementation order:
 
 - Parse `src_device`, destination IP, optional count.
 - Find source device.
@@ -413,7 +418,7 @@ succeeded.
 
 ### `cmd_set_link`
 
-Required behavior:
+Implementation order:
 
 - Parse `<dev>:<iface>` and `up|down`.
 - Find device and interface.
@@ -423,7 +428,7 @@ Required behavior:
 
 ### `cmd_add_route`
 
-Required behavior:
+Implementation order:
 
 - Parse device, prefix/length, next hop, and interface.
 - Find Router and interface.

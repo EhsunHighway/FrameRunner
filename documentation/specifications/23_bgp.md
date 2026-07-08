@@ -223,6 +223,24 @@ The marker must be all `0xFF`.
 
 `length` includes the 19-byte header and is network byte order.
 
+Wire layout:
+
+```text
+0                   1                   2                   3
++-------------------------------------------------------------------------------+
+| marker, bytes 0..3                                                           |
++-------------------------------------------------------------------------------+
+| marker, bytes 4..7                                                           |
++-------------------------------------------------------------------------------+
+| marker, bytes 8..11                                                          |
++-------------------------------------------------------------------------------+
+| marker, bytes 12..15                                                         |
++-------------------+-------------------+-------------------+-------------------+
+| length                                | type                                  |
++-------------------+-------------------+-------------------+-------------------+
+  19-byte BGP common header
+```
+
 ### `BgpOpen`
 
 ```c
@@ -238,6 +256,28 @@ typedef struct __attribute__((packed)) BgpOpen {
 `hold_time` is seconds on the wire.
 
 No optional parameters are required in the first milestone.
+
+Wire layout for the fixed OPEN body:
+
+```text
+offset  size  field
+0       1     version
+1       2     my_as
+3       2     hold_time
+5       4     bgp_id
+9       1     opt_param_len
+10            optional parameters begin when opt_param_len > 0
+
+0                   1                   2                   3
++-------------------+-------------------+-------------------+-------------------+
+| version           | my_as                                 | hold_time, byte 0  |
++-------------------+-------------------+-------------------+-------------------+
+| hold_time, byte 1 | bgp_id, bytes 0..2                                        |
++-------------------+-------------------+-------------------+-------------------+
+| bgp_id, byte 3    | opt_param_len     | optional parameters begin ...          |
++-------------------+-------------------+-------------------+-------------------+
+  10-byte fixed OPEN body when opt_param_len == 0
+```
 
 ### Session State
 
@@ -377,38 +417,61 @@ may call a separate listen helper in the implementation.
 ## Function Behavior
 
 Function behavior is an implementation contract. For simple functions, the
-required-behavior list is written in execution order unless the text explicitly
-says order does not matter. For non-trivial functions, especially functions with
-ownership transfer, queueing, lookup, selection, state-machine transitions, or
-packet forwarding, split the section into behavior summary, implementation
-order, and postconditions so the coder does not have to guess.
+`Implementation order` list is written in execution order unless the text
+explicitly says order does not matter. For non-trivial functions, especially
+functions with ownership transfer, queueing, lookup, selection, state-machine
+transitions, or packet forwarding, split the section into behavior summary,
+implementation order, and postconditions so the coder does not have to guess.
+Do not mix final-state facts into `Implementation order`; put them under
+`Postconditions` unless the implementation must check that fact at that exact
+point in control flow.
 
 
 ### `bgp_init`
 
-Required behavior:
+Behavior summary:
+
+`bgp_init` prepares caller-owned BGP state for one router/local AS and creates
+the TCP listening side when the required TCP state and listening address are
+available.
+
+Implementation order:
 
 - If `state == NULL`, return immediately.
 - Zero all BGP state.
 - Store simulator, router, TCP table, local AS, and router ID.
-- Initialize peer count and RIB count to zero.
 - If TCP table and listening address are available, create a TCP listener on
   port `179` with:
   - receive handler `bgp_receive`
   - connect handler `bgp_tcp_connected`
   - context `state`
 
+Postconditions after `state != NULL`:
+
+- Peer count is `0`.
+- RIB-in count is `0`.
+- `state->sim == sim`.
+- `state->router == router`.
+- `state->tcp_table == tcp_table`.
+- `state->local_as == local_as`.
+- `state->router_id == router_id`.
+
+If TCP listen setup fails, the BGP state remains initialized but cannot accept
+incoming BGP sessions until the owner fixes or retries TCP setup.
+
 ### `bgp_add_peer`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL`, return `-1`.
 - Reject zero local IP or remote IP.
 - Reject remote AS `0`.
 - Reject duplicate peer remote IP.
 - Reject full peer table.
-- Allocate a peer slot.
-- Store local IP, remote IP, local AS, remote AS.
+- Scan `peers[0 .. BGP_MAX_PEERS - 1]` for the first unused peer slot, where
+  unused means `peers[i].valid == 0`.
+- Store local IP, remote IP, local AS, remote AS in that slot.
+- Set that slot's `valid = 1`.
 - Set state to `BGP_CONNECT`.
 - If `state->sim` and `state->tcp_table` are available, call `tcp_connect`:
   - local IP is configured local IP
@@ -418,12 +481,15 @@ Required behavior:
   - receive handler is `bgp_receive`
   - connect handler is `bgp_tcp_connected`
   - context is `state`
-- Store returned TCB on success.
-- Return `0` on configured peer success, `-1` on failure.
+- If `tcp_connect` fails:
+  - clear this peer slot
+  - return `-1`
+- If `tcp_connect` succeeds, store the returned TCB in this peer slot.
+- Return `0`.
 
 ### `bgp_tcp_connected`
 
-Required behavior:
+Implementation order:
 
 - If `tcb == NULL || ctx == NULL`, return.
 - Find peer whose `tcb` equals the callback TCB.
@@ -436,7 +502,7 @@ This is the TCP-established hook. Do not overload `bgp_receive` with
 
 ### `bgp_receive`
 
-Required behavior:
+Implementation order:
 
 - If `payload == NULL`, return.
 - If `ctx == NULL`, free payload and return.
@@ -462,7 +528,7 @@ Required behavior:
 
 ### `bgp_send_open`
 
-Required behavior:
+Implementation order:
 
 - If state or peer is NULL, return `-1`.
 - If peer has no TCB, return `-1`.
@@ -480,18 +546,19 @@ Required behavior:
 
 ### `bgp_send_keepalive`
 
-Required behavior:
+Implementation order:
 
 - If state or peer is NULL, return `-1`.
 - If peer has no TCB, return `-1`.
 - Build BGP header-only KEEPALIVE message.
-- Send with `tcp_send`.
+- Send with `tcp_send` and store the result.
+- If TCP send fails, return `-1`.
 - Update `peer->keepalive_ts`.
-- Return TCP send result.
+- Return `0`.
 
 ### `bgp_send_update`
 
-Required behavior:
+Implementation order:
 
 - If state or peer is NULL, return `-1`.
 - If peer is not established, return `-1`.
@@ -506,7 +573,7 @@ Required behavior:
 
 ### `bgp_select_best`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL`, return `-1`.
 - Consider valid `rib_in` entries matching prefix and prefix length.

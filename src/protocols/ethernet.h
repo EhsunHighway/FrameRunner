@@ -55,12 +55,30 @@ int  ethernet_send(Simulator    *sim,
         ensures \result == -1;
     behavior drop:
         assumes \valid(iface) && \valid(frame) && \valid(out_ethertype) && frame->len >= (size_t)ETH_HDR_LEN &&
-                ((EthernetHeader *)frame->data)->dst_mac[0] != iface->mac[0] &&
-                ((EthernetHeader *)frame->data)->dst_mac[0] != ETH_BROADCAST[0];
+                iface->state != IFACE_ERR_DISABLED;
+        assumes \exists integer i; 0 <= i < ETH_ALEN &&
+                ((EthernetHeader *)frame->data)->dst_mac[i] != iface->mac[i];
+        assumes \exists integer i; 0 <= i < ETH_ALEN &&
+                ((EthernetHeader *)frame->data)->dst_mac[i] != ETH_BROADCAST[i];
+        assumes (((frame->data[12] << 8) | frame->data[13]) != ETHERTYPE_IPV4) ||
+                ((EthernetHeader *)frame->data)->dst_mac[0] != 0x01 ||
+                ((EthernetHeader *)frame->data)->dst_mac[1] != 0x00 ||
+                ((EthernetHeader *)frame->data)->dst_mac[2] != 0x5e ||
+                (((EthernetHeader *)frame->data)->dst_mac[3] & 0x80) != 0;
         assigns \nothing;
         ensures \result == 1;
     behavior valid:
         assumes \valid(iface) && \valid(frame) && \valid(out_ethertype) && frame->len >= (size_t)ETH_HDR_LEN;
+        assumes iface->state != IFACE_ERR_DISABLED;
+        assumes ((\forall integer i; 0 <= i < ETH_ALEN ==>
+                    ((EthernetHeader *)frame->data)->dst_mac[i] == iface->mac[i]) ||
+                 (\forall integer i; 0 <= i < ETH_ALEN ==>
+                    ((EthernetHeader *)frame->data)->dst_mac[i] == ETH_BROADCAST[i]) ||
+                 (((frame->data[12] << 8) | frame->data[13]) == ETHERTYPE_IPV4 &&
+                  ((EthernetHeader *)frame->data)->dst_mac[0] == 0x01 &&
+                  ((EthernetHeader *)frame->data)->dst_mac[1] == 0x00 &&
+                  ((EthernetHeader *)frame->data)->dst_mac[2] == 0x5e &&
+                  (((EthernetHeader *)frame->data)->dst_mac[3] & 0x80) == 0));
         assigns frame->data, frame->len, *out_ethertype, iface->rx_bytes;
         ensures \result == 0 ==> frame->len == \old(frame->len) - ETH_HDR_LEN;
         ensures \result == 0 ==> *out_ethertype == ((\old(frame->data[12]) << 8) | \old(frame->data[13]));

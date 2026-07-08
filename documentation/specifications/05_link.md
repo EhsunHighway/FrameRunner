@@ -205,16 +205,19 @@ int        link_transmit(Link             *link,
 ## Function Behavior
 
 Function behavior is an implementation contract. For simple functions, the
-required-behavior list is written in execution order unless the text explicitly
-says order does not matter. For non-trivial functions, especially functions with
-ownership transfer, queueing, lookup, selection, state-machine transitions, or
-packet forwarding, split the section into behavior summary, implementation
-order, and postconditions so the coder does not have to guess.
+`Implementation order` list is written in execution order unless the text
+explicitly says order does not matter. For non-trivial functions, especially
+functions with ownership transfer, queueing, lookup, selection, state-machine
+transitions, or packet forwarding, split the section into behavior summary,
+implementation order, and postconditions so the coder does not have to guess.
+Do not mix final-state facts into `Implementation order`; put them under
+`Postconditions` unless the implementation must check that fact at that exact
+point in control flow.
 
 
 ### `link_create`
 
-Required behavior:
+Implementation order:
 
 - If `end_a == NULL`, return `NULL`.
 - If `end_b == NULL`, return `NULL`.
@@ -234,21 +237,21 @@ interface side.
 
 ### `link_free`
 
-Required behavior:
+Implementation order:
 
 - If `link == NULL`, return immediately.
 - Free only the link object.
 
 ### `link_set_up`
 
-Required behavior:
+Implementation order:
 
 - If `link == NULL`, return without changing state.
 - Otherwise set `link->up = up`.
 
 ### `link_is_up`
 
-Required behavior:
+Implementation order:
 
 - If `link == NULL`, return `0`.
 - If `link->up != 0`, return `1`.
@@ -256,7 +259,7 @@ Required behavior:
 
 ### `link_get_other_interface`
 
-Required behavior:
+Implementation order:
 
 - If `link == NULL`, return `NULL`.
 - If `src == NULL`, return `NULL`.
@@ -269,7 +272,7 @@ addresses.
 
 ### `link_transmit`
 
-Required behavior:
+Implementation order:
 
 - If `link == NULL`, return `-1`.
 - If `pkt == NULL`, return `-1`.

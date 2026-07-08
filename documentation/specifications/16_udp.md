@@ -70,13 +70,18 @@ This is registered with IP for protocol `IPPROTO_UDP`.
 Application/protocol-level handler:
 
 ```c
-typedef void (*Udp_Recv_Handler)(uint32_t src_ip,
-                                 uint16_t src_port,
-                                 Packet *payload,
-                                 void *ctx);
+typedef void (*Udp_Recv_Handler)(Interface *iface,
+                                 uint32_t   src_ip,
+                                 uint16_t   src_port,
+                                 Packet    *payload,
+                                 void      *ctx);
 ```
 
 This is stored in a UDP socket for one destination port.
+
+The `iface` argument is the ingress interface that received the UDP datagram.
+UDP does not interpret that interface, but protocols such as RIP need it for
+split horizon and other routing decisions.
 
 Receive flow:
 
@@ -198,6 +203,20 @@ offset  size  field
 8             payload begins
 ```
 
+Book-style view:
+
+```text
+0                   1                   2                   3
++-------------------+-------------------+-------------------+-------------------+
+| source port                           | destination port                      |
++-------------------+-------------------+-------------------+-------------------+
+| UDP length                            | checksum                              |
++-------------------+-------------------+-------------------+-------------------+
+| payload begins ...                                                            |
++-------------------------------------------------------------------------------+
+  8-byte UDP header
+```
+
 All UDP header fields are network byte order.
 
 ### `UdpSocket`
@@ -296,36 +315,48 @@ int  udp_receive(Interface *iface,
 ## Function Behavior
 
 Function behavior is an implementation contract. For simple functions, the
-required-behavior list is written in execution order unless the text explicitly
-says order does not matter. For non-trivial functions, especially functions with
-ownership transfer, queueing, lookup, selection, state-machine transitions, or
-packet forwarding, split the section into behavior summary, implementation
-order, and postconditions so the coder does not have to guess.
+`Implementation order` list is written in execution order unless the text
+explicitly says order does not matter. For non-trivial functions, especially
+functions with ownership transfer, queueing, lookup, selection, state-machine
+transitions, or packet forwarding, split the section into behavior summary,
+implementation order, and postconditions so the coder does not have to guess.
+Do not mix final-state facts into `Implementation order`; put them under
+`Postconditions` unless the implementation must check that fact at that exact
+point in control flow.
 
 
 ### `udp_init`
 
-Required behavior:
+Behavior summary:
+
+`udp_init` prepares caller-owned UDP state so no UDP sockets are bound.
+
+Implementation order:
 
 - If `state == NULL`, return immediately.
 - For each socket slot, set `valid = 0`.
-- Set `state->count = 0`.
+
+Postconditions after `state != NULL`:
+
+- `state->count == 0`.
+- Every socket slot is invalid.
 
 Current implementation does not clear `port`, `recv_handler`, or `ctx` for each
 socket slot. The `valid` bit is the authority.
 
 ### `udp_bind`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL`, return `-1`.
 - If `recv_handler == NULL`, return `-1`.
 - If `port == 0`, return `-1`.
 - Scan all 32 sockets for a valid socket already bound to `port`.
 - If duplicate exists, return `-1`.
-- Scan all 32 sockets for first invalid slot.
-- If no free slot exists, return `-1`.
-- Fill the free slot:
+- Scan `sockets[0 .. UDP_MAX_SOCKETS - 1]` for the first unused socket slot,
+  where unused means `sockets[i].valid == 0`.
+- If no unused socket slot exists, return `-1`.
+- Fill that socket slot:
   - `valid = 1`
   - `port = port`
   - `recv_handler = recv_handler`
@@ -335,7 +366,7 @@ Required behavior:
 
 ### `udp_unbind`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL`, return `-1`.
 - If `port == 0`, return `-1`.
@@ -351,7 +382,7 @@ Current implementation does not clear `recv_handler` or `ctx`.
 
 ### `udp_send`
 
-Required behavior:
+Implementation order:
 
 - If `sim == NULL`, return `-1`.
 - If `dst_port == 0`, return `-1`.
@@ -375,7 +406,7 @@ Required behavior:
 
 ### `udp_receive`
 
-Required behavior:
+Implementation order:
 
 - If `iface == NULL`, return `-1`.
 - If `pkt == NULL`:
@@ -427,8 +458,8 @@ Required behavior:
   - strip `UDP_HDR_LEN` bytes
   - if strip fails, free `pkt`, increment `rx_errors`, return `-1`
   - set `pkt->layer = 5`
-  - call socket receive handler with source IP, source port, stripped payload,
-    and socket context
+  - call socket receive handler with ingress interface, source IP, source port,
+    stripped payload, and socket context
   - return `0`
 - If no socket is found and `udp_ctx->sim != NULL`, return
   `icmp_send_unreach_port(udp_ctx->sim, iface, pkt)`.
@@ -706,7 +737,8 @@ Additional required proof/test property:
 - Non-UDP original IP protocol increments `rx_errors`.
 - UDP length smaller than header increments `rx_errors`.
 - UDP length larger than visible packet length increments `rx_errors`.
-- Bound destination port strips UDP header and calls socket callback.
+- Bound destination port strips UDP header and calls socket callback with the
+  ingress interface.
 - Missing destination port with simulator calls ICMP Port Unreachable.
 - Missing destination port without simulator increments `rx_dropped`.
 
@@ -747,7 +779,8 @@ Minimum KLEVA tests:
 31. UDP length greater than packet length increments `rx_errors`.
 32. Bound port strips UDP header.
 33. Bound port sets packet layer to `5`.
-34. Bound port calls callback with source IP and source port.
+34. Bound port calls callback with ingress interface, source IP, and source
+    port.
 35. Missing port with simulator calls ICMP Port Unreachable.
 36. Missing port without simulator increments `rx_dropped`.
 37. Current behavior: `udp_len < pkt->len` does not trim trailing bytes.

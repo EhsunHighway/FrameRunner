@@ -306,36 +306,61 @@ own send APIs.
 ## Function Behavior
 
 Function behavior is an implementation contract. For simple functions, the
-required-behavior list is written in execution order unless the text explicitly
-says order does not matter. For non-trivial functions, especially functions with
-ownership transfer, queueing, lookup, selection, state-machine transitions, or
-packet forwarding, split the section into behavior summary, implementation
-order, and postconditions so the coder does not have to guess.
+`Implementation order` list is written in execution order unless the text
+explicitly says order does not matter. For non-trivial functions, especially
+functions with ownership transfer, queueing, lookup, selection, state-machine
+transitions, or packet forwarding, split the section into behavior summary,
+implementation order, and postconditions so the coder does not have to guess.
+Do not mix final-state facts into `Implementation order`; put them under
+`Postconditions` unless the implementation must check that fact at that exact
+point in control flow.
 
 
 ### `host_create`
 
-Required behavior:
+Behavior summary:
+
+`host_create` allocates one Host, initializes all Host-owned protocol state,
+registers IP protocol handlers, and returns a ready Host object. If any required
+allocation or registration fails, it releases everything allocated so far and
+returns `NULL`.
+
+Implementation order:
 
 - If `name == NULL || sim == NULL`, return `NULL`.
 - Allocate and zero one Host.
+- If Host allocation fails, return `NULL`.
 - Copy the name into `host->base.name` with termination.
 - Store borrowed simulator pointer in `host->sim`.
 - Set `host->base.iface_max = HOST_MAX_PORTS`.
 - Allocate `host->base.interfaces` with capacity `HOST_MAX_PORTS`.
+- If interface-array allocation fails, free Host-owned state already created and
+  return `NULL`.
 - Set `host->base.iface_count = 0`.
 - Allocate `host->arp_cache`.
+- If ARP-cache allocation fails, free Host-owned state already created and
+  return `NULL`.
 - Call `arp_cache_init(host->arp_cache)`.
 - Allocate `host->ip_stack`.
+- If IP-stack allocation fails, free Host-owned state already created and
+  return `NULL`.
 - Call `ip_stack_init(host->ip_stack, sim)`.
 - Allocate `host->udp_state`.
+- If UDP-state allocation fails, free Host-owned state already created and
+  return `NULL`.
 - Call `udp_init(host->udp_state)`.
 - Allocate `host->tcp_table`.
+- If TCP-table allocation fails, free Host-owned state already created and
+  return `NULL`.
 - Call `tcp_init(host->tcp_table)`.
 - Allocate `host->udp_context`.
+- If UDP-context allocation fails, free Host-owned state already created and
+  return `NULL`.
 - Set `host->udp_context->sim = sim`.
 - Set `host->udp_context->state = host->udp_state`.
 - Allocate `host->tcp_context`.
+- If TCP-context allocation fails, free Host-owned state already created and
+  return `NULL`.
 - Set `host->tcp_context->sim = sim`.
 - Set `host->tcp_context->table = host->tcp_table`.
 - Register protocol handlers in this Host's IP stack:
@@ -346,15 +371,30 @@ Required behavior:
 | `IPPROTO_UDP` | `udp_receive` | `host->udp_context` |
 | `IPPROTO_TCP` | `tcp_receive` | `host->tcp_context` |
 
+- If any required protocol registration fails, free Host-owned state already
+  created and return `NULL`.
 - Store `host->gateway_ip = gateway_ip`.
 - Return the Host.
 
-If any allocation or registration fails, release all Host-owned state already
-created and return `NULL`.
+Postconditions after non-NULL return:
+
+- `host->sim == sim`.
+- `host->base.iface_max == HOST_MAX_PORTS`.
+- `host->base.iface_count == 0`.
+- Host-owned ARP cache, IP stack, UDP state, TCP table, UDP context, and TCP
+  context exist.
+- UDP context points to `sim` and this Host's UDP state.
+- TCP context points to `sim` and this Host's TCP table.
+- IP stack has ICMP, UDP, and TCP handlers registered with the required
+  contexts.
+- `host->gateway_ip == gateway_ip`.
+
+The cleanup helper/path used for allocation and registration failure must free
+only Host-owned state that has actually been created.
 
 ### `host_free`
 
-Required behavior:
+Implementation order:
 
 - If `host == NULL`, return.
 - For each interface pointer stored in `host->base.interfaces[0 ..
@@ -372,7 +412,7 @@ Cleanup must match the pointer storage model in `host.h`.
 
 ### `host_add_interface`
 
-Required behavior:
+Implementation order:
 
 - If `host == NULL`, return `-1`.
 - If `iface == NULL`, return `-1`.
@@ -391,7 +431,7 @@ fails only on NULL input, and Host checks those inputs first.
 
 ### `host_receive`
 
-Required behavior:
+Implementation order:
 
 - If `host == NULL`, return `-1`.
 - If `iface == NULL`, return `-1`.
@@ -412,7 +452,7 @@ upper-layer protocol headers in this function.
 
 ### `host_send_ip`
 
-Required behavior:
+Implementation order:
 
 - If `host == NULL`, return `-1`.
 - If `host->sim == NULL`, return `-1`.

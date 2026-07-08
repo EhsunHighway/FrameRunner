@@ -33,6 +33,24 @@ offset  size  field
 14            payload begins
 ```
 
+Book-style view:
+
+```text
+0                   1                   2                   3
++-------------------+-------------------+-------------------+-------------------+
+| destination MAC address, bytes 0..3                                       |
++-------------------------------------------------------------------------------+
+| destination MAC bytes 4..5             | source MAC address, bytes 0..1        |
++-------------------------------------------------------------------------------+
+| source MAC address, bytes 2..5                                             |
++-------------------------------------------------------------------------------+
+| EtherType                             | payload begins ...                     |
++-------------------------------------------------------------------------------+
+  6 bytes destination MAC
+  6 bytes source MAC
+  2 bytes EtherType
+```
+
 The header is exactly 14 bytes:
 
 ```c
@@ -57,12 +75,18 @@ Without `packed`, the struct might not match the wire layout.
 On receive, Ethernet accepts a frame only if the destination MAC is:
 
 - exactly this interface's MAC address, or
-- the broadcast address `FF:FF:FF:FF:FF:FF`
+- the broadcast address `FF:FF:FF:FF:FF:FF`, or
+- an IPv4 multicast MAC for an IPv4 frame:
+  `01:00:5e:00:00:00` through `01:00:5e:7f:ff:ff`
 
 Otherwise the frame is dropped with return value `1`.
 
 The comparison must check all six bytes. Checking only the first byte is not a
 valid Ethernet destination test.
+
+This simulator does not model multicast group membership yet. Accepting IPv4
+multicast MACs means the frame is allowed to reach the IP receive path; IP and
+upper routing protocols still decide what to do with the payload.
 
 ### EtherType
 
@@ -143,7 +167,7 @@ It does not:
 - flood frames
 - switch frames
 - implement VLAN tags
-- implement multicast filtering
+- implement multicast group membership filtering
 - own packets after handing them to link/scheduler paths
 - decide ARP or IP behavior after stripping the header
 
@@ -237,16 +261,19 @@ int  ethernet_receive(Interface *iface,
 ## Function Behavior
 
 Function behavior is an implementation contract. For simple functions, the
-required-behavior list is written in execution order unless the text explicitly
-says order does not matter. For non-trivial functions, especially functions with
-ownership transfer, queueing, lookup, selection, state-machine transitions, or
-packet forwarding, split the section into behavior summary, implementation
-order, and postconditions so the coder does not have to guess.
+`Implementation order` list is written in execution order unless the text
+explicitly says order does not matter. For non-trivial functions, especially
+functions with ownership transfer, queueing, lookup, selection, state-machine
+transitions, or packet forwarding, split the section into behavior summary,
+implementation order, and postconditions so the coder does not have to guess.
+Do not mix final-state facts into `Implementation order`; put them under
+`Postconditions` unless the implementation must check that fact at that exact
+point in control flow.
 
 
 ### `ethernet_send`
 
-Required behavior:
+Implementation order:
 
 - If `sim == NULL`, return `-1`.
 - If `iface == NULL`, return `-1`.
@@ -290,7 +317,7 @@ link_transmit(iface->link,
 
 ### `ethernet_receive`
 
-Required behavior:
+Implementation order:
 
 - If `iface == NULL`, return `-1`.
 - If `frame == NULL`, return `-1`.
@@ -298,9 +325,15 @@ Required behavior:
 - If `frame->len < ETH_HDR_LEN`, return `-1`.
 - If `iface->state == IFACE_ERR_DISABLED`, return `-1`.
 - Interpret `frame->data` as an `EthernetHeader`.
-- If destination MAC is neither `iface->mac` nor `ETH_BROADCAST`, return `1`.
 - Convert header EtherType from network to host order and store it in
-  `*out_ethertype`.
+  a local `ethertype`.
+- Accept the frame if destination MAC is exactly `iface->mac`.
+- Accept the frame if destination MAC is exactly `ETH_BROADCAST`.
+- Accept the frame if `ethertype == ETHERTYPE_IPV4` and destination MAC is an
+  IPv4 multicast MAC in the `01:00:5e:00:00:00` through
+  `01:00:5e:7f:ff:ff` range.
+- If none of those destination tests accepts the frame, return `1`.
+- Store `ethertype` in `*out_ethertype`.
 - Strip `ETH_HDR_LEN` bytes from the packet.
 - If strip fails, return `-1`.
 - Add the post-strip payload length to `iface->rx_bytes`.
@@ -312,12 +345,12 @@ Return codes:
 | Return | Meaning |
 | --- | --- |
 | `0` | Accepted and stripped. |
-| `1` | Dropped because destination MAC is not ours and not broadcast. |
+| `1` | Dropped because destination MAC is not this interface, not broadcast, and not accepted IPv4 multicast. |
 | `-1` | Bad input, disabled interface, too-short frame, or strip failure. |
 
 ### `ethernet_receive_event`
 
-Required behavior:
+Implementation order:
 
 - Ignore `ctx`.
 - Read destination interface from `e->dst_device`.
@@ -383,10 +416,14 @@ ethernet_receive(iface, frame, out_ethertype)
   |
   +-- eth_hdr = frame->data
   |
-  +-- dst MAC not iface MAC and not broadcast:
+  +-- ethertype = ntohs(eth_hdr->ethertype)
+  |
+  +-- dst MAC not iface MAC,
+  |   not broadcast,
+  |   and not IPv4 multicast for ETHERTYPE_IPV4:
   |     return 1
   |
-  +-- *out_ethertype = ntohs(eth_hdr->ethertype)
+  +-- *out_ethertype = ethertype
   |
   +-- packet_strip(frame, 14)
   |
@@ -442,6 +479,13 @@ changes, byte-order conversion, and six-byte MAC filtering.
     predicate eth_frame_readable(Packet *frame) =
         packet_visible_bytes(frame) &&
         frame->len >= 14;
+
+    predicate eth_mac_ipv4_multicast{L}(uint8_t *mac) =
+        \valid_read(mac + (0 .. 5)) &&
+        mac[0] == 0x01 &&
+        mac[1] == 0x00 &&
+        mac[2] == 0x5e &&
+        (mac[3] & 0x80) == 0;
 */
 ```
 
@@ -532,6 +576,8 @@ Additional required proof/test property:
         assumes iface->state != IFACE_ERR_DISABLED;
         assumes !eth_mac_equal(((EthernetHeader *)frame->data)->dst_mac, iface->mac);
         assumes !eth_mac_equal(((EthernetHeader *)frame->data)->dst_mac, (uint8_t *)ETH_BROADCAST);
+        assumes !(((frame->data[12] << 8) | frame->data[13]) == ETHERTYPE_IPV4 &&
+                  eth_mac_ipv4_multicast(((EthernetHeader *)frame->data)->dst_mac));
         assigns \nothing;
         ensures \result == 1;
 
@@ -541,7 +587,9 @@ Additional required proof/test property:
         assumes \valid(out_ethertype);
         assumes iface->state != IFACE_ERR_DISABLED;
         assumes eth_mac_equal(((EthernetHeader *)frame->data)->dst_mac, iface->mac) ||
-                eth_mac_equal(((EthernetHeader *)frame->data)->dst_mac, (uint8_t *)ETH_BROADCAST);
+                eth_mac_equal(((EthernetHeader *)frame->data)->dst_mac, (uint8_t *)ETH_BROADCAST) ||
+                (((frame->data[12] << 8) | frame->data[13]) == ETHERTYPE_IPV4 &&
+                 eth_mac_ipv4_multicast(((EthernetHeader *)frame->data)->dst_mac));
         assigns frame->data,
                 frame->len,
                 frame->layer,
@@ -622,20 +670,23 @@ Minimum KLEVA tests:
 19. Wrong-MAC drop does not strip the frame.
 20. Receive accepts exact interface MAC.
 21. Receive accepts broadcast MAC.
-22. Accepted receive converts EtherType to host order.
-23. Accepted receive strips exactly 14 bytes.
-24. Accepted receive increments `rx_bytes` by post-strip payload length.
-25. Accepted receive sets packet layer to `3`.
-26. `ethernet_receive_event` ignores missing destination interface or packet.
-27. Receive event accepted path updates `last_rx_time`.
-28. Receive event accepted path calls `iface->rx_handler` if present.
-29. Receive event wrong-MAC path increments `rx_dropped`.
-30. Receive event error path increments `rx_errors` and updates
+22. Receive accepts IPv4 multicast MAC when EtherType is IPv4.
+23. Receive drops IPv4 multicast-shaped MAC when EtherType is not IPv4.
+24. Accepted receive converts EtherType to host order.
+25. Accepted receive strips exactly 14 bytes.
+26. Accepted receive increments `rx_bytes` by post-strip payload length.
+27. Accepted receive sets packet layer to `3`.
+28. `ethernet_receive_event` ignores missing destination interface or packet.
+29. Receive event accepted path updates `last_rx_time`.
+30. Receive event accepted path calls `iface->rx_handler` if present.
+31. Receive event wrong-MAC path increments `rx_dropped`.
+32. Receive event error path increments `rx_errors` and updates
    `last_error_time`.
 
 ## Common Mistakes
 
 - Do not compare only the first MAC byte.
+- Do not reject IPv4 multicast MAC frames before the IP layer can inspect them.
 - Do not return `0` from `ethernet_send` success unless `link_transmit` changes;
   current success is `1`.
 - Do not forget EtherType byte-order conversion.
@@ -643,4 +694,4 @@ Minimum KLEVA tests:
 - Do not free the caller's packet in `ethernet_send`.
 - Do not assume `ctx` is used by `ethernet_receive_event`; current code ignores
   it.
-- Do not describe VLAN or multicast support as implemented.
+- Do not describe VLAN or multicast group membership support as implemented.

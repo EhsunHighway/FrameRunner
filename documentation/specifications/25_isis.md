@@ -218,6 +218,18 @@ Header length is `8` bytes in this simplified model.
 
 `id_len == 0` means 6-byte system ID in real IS-IS convention.
 
+Wire layout:
+
+```text
+0                   1                   2                   3
++-------------------+-------------------+-------------------+-------------------+
+| discr             | hdr_len           | version           | id_len            |
++-------------------+-------------------+-------------------+-------------------+
+| pdu_type          | version2          | reserved          | max_areas         |
++-------------------+-------------------+-------------------+-------------------+
+  8-byte simplified IS-IS common header
+```
+
 ### `IsisIih`
 
 ```c
@@ -234,6 +246,23 @@ typedef struct __attribute__((packed)) IsisIih {
 The first milestone uses Level-1 circuit type.
 
 TLVs may follow the fixed IIH body.
+
+Wire layout for the fixed IIH body:
+
+```text
+0                   1                   2                   3
++-------------------+-------------------+-------------------+-------------------+
+| circuit_type      | src_id, bytes 0..2                                        |
++-------------------+-------------------+-------------------+-------------------+
+| src_id, bytes 3..5                    | hold_time                             |
++-------------------+-------------------+-------------------+-------------------+
+| pdu_len                               | priority          | dis_id, byte 0     |
++-------------------+-------------------+-------------------+-------------------+
+| dis_id, bytes 1..4                                                           |
++-------------------------------------------------------------------------------+
+| dis_id, bytes 5..6                    | TLVs begin ...                        |
++-------------------+-------------------+-------------------+-------------------+
+```
 
 ### `IsisLspHeader`
 
@@ -255,6 +284,23 @@ system-id[6] + pseudonode-id[1] + fragment-id[1]
 ```
 
 First milestone can use pseudonode `0` and fragment `0`.
+
+Wire layout:
+
+```text
+0                   1                   2                   3
++-------------------+-------------------+-------------------+-------------------+
+| pdu_len                               | remaining_lifetime                    |
++-------------------+-------------------+-------------------+-------------------+
+| lsp_id, bytes 0..3                                                           |
++-------------------------------------------------------------------------------+
+| lsp_id, bytes 4..7                                                           |
++-------------------------------------------------------------------------------+
+| sequence number                                                              |
++-------------------------------------------------------------------------------+
+| checksum                              | type_block        | TLVs begin ...     |
++-------------------+-------------------+-------------------+-------------------+
+```
 
 ### `IsisIface`
 
@@ -386,38 +432,60 @@ should call the same `isis_receive` after identifying IS-IS ethertype/SNAP.
 ## Function Behavior
 
 Function behavior is an implementation contract. For simple functions, the
-required-behavior list is written in execution order unless the text explicitly
-says order does not matter. For non-trivial functions, especially functions with
-ownership transfer, queueing, lookup, selection, state-machine transitions, or
-packet forwarding, split the section into behavior summary, implementation
-order, and postconditions so the coder does not have to guess.
+`Implementation order` list is written in execution order unless the text
+explicitly says order does not matter. For non-trivial functions, especially
+functions with ownership transfer, queueing, lookup, selection, state-machine
+transitions, or packet forwarding, split the section into behavior summary,
+implementation order, and postconditions so the coder does not have to guess.
+Do not mix final-state facts into `Implementation order`; put them under
+`Postconditions` unless the implementation must check that fact at that exact
+point in control flow.
 
 
 ### `isis_init`
 
-Required behavior:
+Behavior summary:
+
+`isis_init` prepares caller-owned IS-IS state for one router, derives local
+identity from NET when available, and schedules initial IS-IS timers when a
+scheduler exists.
+
+Implementation order:
 
 - If `state == NULL`, return immediately.
 - Zero all IS-IS state.
 - Store `sim` and `router`.
 - If `net != NULL`, copy 8 NET bytes.
 - Derive or copy the 6-byte system ID from NET bytes.
-- Initialize counts to zero.
 - Set `local_lsp_seq = 1`.
-- If scheduler exists, schedule first Hello and LSP regeneration events.
+- If `sim != NULL && sim->sched != NULL`, schedule first Hello and LSP
+  regeneration events.
+
+Postconditions after `state != NULL`:
+
+- Neighbor count is `0`.
+- LSDB count is `0`.
+- Interface count is `0`.
+- `state->sim == sim`.
+- `state->router == router`.
+- `state->local_lsp_seq == 1`.
+- If `net != NULL`, the local NET/system ID fields match the copied NET bytes.
 
 Control-plane registration is owned by Router/IP/Ethernet integration, not
 necessarily by `isis_init`.
 
 ### `isis_enable_iface`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL || iface == NULL`, return `-1`.
 - If `metric == 0 || metric > ISIS_METRIC_MAX`, return `-1`.
 - If interface is already enabled, update metric and return `0`.
 - If interface table is full, return `-1`.
-- Store interface and metric.
+- Scan `state->ifaces[0 .. ISIS_MAX_IFACES - 1]` for the first unused slot,
+  where unused means `state->ifaces[i].valid == 0`.
+- Store interface and metric in that slot.
+- Set that slot's `valid = 1`.
 - Increment interface count.
 - Return `0`.
 
@@ -425,7 +493,7 @@ IS-IS does not take ownership of the interface.
 
 ### `isis_receive`
 
-Required behavior:
+Implementation order:
 
 - If `iface == NULL`, return `-1`.
 - If `pkt == NULL`, increment `iface->rx_errors` and return `-1`.
@@ -442,7 +510,7 @@ Required behavior:
 
 ### `isis_send_iih`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL || iface == NULL`, return `-1`.
 - If `state->sim == NULL`, return `-1`.
@@ -459,7 +527,7 @@ Required behavior:
 
 ### `isis_generate_lsp`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL`, return `-1`.
 - Build this router's local LSP from valid neighbors.
@@ -471,7 +539,7 @@ Required behavior:
 
 ### `isis_flood_lsp`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL || lsp == NULL`, return `-1`.
 - For each enabled interface:
@@ -481,7 +549,7 @@ Required behavior:
 
 ### `isis_run_spf`
 
-Required behavior:
+Implementation order:
 
 - If `state == NULL || state->router == NULL`, return `-1`.
 - Build graph from valid LSDB entries.

@@ -362,7 +362,7 @@ The implementation SHOULD use one internal helper for masks:
 static uint32_t route_prefix_mask(uint8_t prefix_len);
 ```
 
-Required behavior:
+Implementation order:
 
 - `prefix_len == 0` returns `0`.
 - `prefix_len >= 32` returns `0xFFFFFFFFu`.
@@ -381,7 +381,7 @@ distance from the route protocol:
 static int route_admin_distance(uint8_t proto);
 ```
 
-Required behavior:
+Implementation order:
 
 - `ROUTE_PROTO_DIRECT` returns `0`.
 - `ROUTE_PROTO_STATIC` returns `1`.
@@ -520,11 +520,14 @@ directly.
 ## Function Behavior
 
 Function behavior is an implementation contract. For simple functions, the
-required-behavior list is written in execution order unless the text explicitly
-says order does not matter. For non-trivial functions, especially functions with
-ownership transfer, queueing, lookup, selection, state-machine transitions, or
-packet forwarding, split the section into behavior summary, implementation
-order, and postconditions so the coder does not have to guess.
+`Implementation order` list is written in execution order unless the text
+explicitly says order does not matter. For non-trivial functions, especially
+functions with ownership transfer, queueing, lookup, selection, state-machine
+transitions, or packet forwarding, split the section into behavior summary,
+implementation order, and postconditions so the coder does not have to guess.
+Do not mix final-state facts into `Implementation order`; put them under
+`Postconditions` unless the implementation must check that fact at that exact
+point in control flow.
 
 
 ### `route_table_init`

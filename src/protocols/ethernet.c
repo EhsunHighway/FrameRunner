@@ -8,6 +8,14 @@ static int mac_equal(const uint8_t a[6], const uint8_t b[6]) {
     return memcmp(a, b, 6) == 0;
 }
 
+static int mac_is_ipv4_multicast(const uint8_t mac[6]) {
+    return mac &&
+           mac[0] == 0x01 &&
+           mac[1] == 0x00 &&
+           mac[2] == 0x5e &&
+           (mac[3] & 0x80) == 0;
+}
+
 void ethernet_receive_event(const Event *e, void *ctx) {
     (void)ctx;
 
@@ -87,14 +95,17 @@ int  ethernet_receive(Interface *iface,
     }
 
     EthernetHeader *eth_hdr = (EthernetHeader *)frame->data;
-    if (!mac_equal(eth_hdr->dst_mac, iface->mac) && !mac_equal(eth_hdr->dst_mac, ETH_BROADCAST)) {
+    uint16_t ethertype = ns_ntohs(eth_hdr->ethertype);
+    if (!mac_equal(eth_hdr->dst_mac, iface->mac) &&
+        !mac_equal(eth_hdr->dst_mac, ETH_BROADCAST) &&
+        !(ethertype == ETHERTYPE_IPV4 && mac_is_ipv4_multicast(eth_hdr->dst_mac))) {
         return 1;  // Not for this interface - drop
     }
     /*
      * Extract the EtherType from the Ethernet header and convert it from network byte order to host byte order.
      * Network protocols use big-endian by convention; This is called “network byte order”.
      */
-    *out_ethertype = ns_ntohs(eth_hdr->ethertype);
+    *out_ethertype = ethertype;
 
     if (packet_strip(frame, ETH_HDR_LEN) == -1 ) {
         return -1;

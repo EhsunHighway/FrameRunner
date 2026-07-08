@@ -1,7 +1,7 @@
 # Module 21 - RIP
 
 **Files:** `src/protocols/rip.c`, `src/protocols/rip.h`
-**Status:** Ready for implementation; current source files are empty
+**Status:** In implementation
 **Depends on:** `router`, `route_table`, `udp`, `ip`, `packet`, `interface`,
 `scheduler`, `event`, `simulator`, `byte_order`
 
@@ -12,13 +12,19 @@ RIP means Routing Information Protocol.
 RIP is a distance-vector routing protocol. Each router tells its neighbors what
 networks it can reach and the metric, or cost, for each network.
 
-RIP is intentionally simple:
+RIP is intentionally simple as a real routing protocol. It does not build a
+full link-state database, run SPF, or use bandwidth/delay composite metrics.
+Its core model is small:
 
 - metric is hop count
 - directly connected networks have low cost
 - unreachable routes use metric `16`
 - routers periodically advertise routes
 - routers update their own routes from neighbor advertisements
+
+This simulator should preserve that simplicity while still modeling the
+important RIP ideas: route advertisements, hop-count metric, split horizon,
+route timeout, and garbage collection.
 
 RIP is not the forwarding table itself. RIP is a control-plane protocol that
 feeds routes into the Router's route table.
@@ -64,6 +70,82 @@ RIP stores its own small database because RIP needs protocol-specific state:
 Forwarding does not use the RIP database directly. Forwarding uses the
 route-table FIB.
 
+### Packet Entry Versus RIP DB Entry
+
+Two structures in this module both describe routes, but they are not the same
+thing:
+
+| Structure | Where It Lives | What To Do With It |
+| --- | --- | --- |
+| `RipEntry` | inside the received or transmitted RIP packet | read from it when parsing, write to it when encoding |
+| `RipRouteInfo` | inside `state->db` | store simulator RIP state here |
+
+During receive, a `RipEntry *` points into packet bytes owned by the incoming
+UDP payload. Do not write simulator state into that object. Fields such as
+`valid`, `state`, `learned_on`, and `last_update` belong to `RipRouteInfo`,
+not to `RipEntry`.
+
+During receive, the implementation reads one packet `RipEntry`, converts its
+wire fields into host-order route values, then finds or creates the matching
+`RipRouteInfo` in `state->db`.
+
+### RIP Wire Format
+
+RIP runs inside UDP. UDP ports are not part of the RIP payload. For this
+module, the UDP source and destination ports are both `RIP_PORT`.
+
+The RIP payload starts with one `RipHeader`:
+
+```text
+0                   1                   2                   3
++-------------------+-------------------+-------------------+-------------------+
+| command           | version           | zero                                  |
++-------------------+-------------------+-------------------+-------------------+
+  1 byte              1 byte              2 bytes
+```
+
+Field mapping:
+
+- `command`: `RIP_CMD_REQUEST` or `RIP_CMD_RESPONSE`
+- `version`: `RIP_VERSION`
+- `zero`: must be written as `0` when sending; ignored in this receive
+  milestone
+
+After the header, the payload contains zero or more fixed-size `RipEntry`
+records. Each record is 20 bytes:
+
+```text
+0                   1                   2                   3
++-------------------+-------------------+-------------------+-------------------+
+| afi                                   | route_tag                             |
++-------------------+-------------------+-------------------+-------------------+
+| ip_addr                                                                       |
++-------------------------------------------------------------------------------+
+| subnet_mask                                                                   |
++-------------------------------------------------------------------------------+
+| next_hop                                                                      |
++-------------------------------------------------------------------------------+
+| metric                                                                        |
++-------------------------------------------------------------------------------+
+  2 bytes                              2 bytes
+  4 bytes
+  4 bytes
+  4 bytes
+  4 bytes
+```
+
+Field mapping:
+
+- `afi`: address family; IPv4 routes use `RIP_AFI_IPV4`
+- `route_tag`: written as `0` in this milestone
+- `ip_addr`: route prefix in network byte order
+- `subnet_mask`: route mask in network byte order
+- `next_hop`: next hop in network byte order; `0` means use the sender IP
+- `metric`: RIP metric in network byte order, capped at `RIP_INFINITY`
+
+The packet structures describe bytes on the wire. Multi-byte fields must be
+converted between network order and host order when reading or writing.
+
 ### Split Horizon
 
 Split horizon prevents a common distance-vector loop.
@@ -81,16 +163,21 @@ This simulator should implement split horizon in the first RIP version.
 Poison reverse is a related technique where the route is advertised back with
 metric `16`. This spec uses simple split horizon, not poison reverse.
 
-### Periodic And Triggered Updates
+### Periodic Updates
 
 RIP sends periodic updates every 30 seconds.
 
-RIP may also send triggered updates when a route changes. Triggered updates make
-convergence faster.
+The first RIP implementation uses periodic updates only:
 
-This module should include the state and function boundary for triggered
-updates, but the minimum implementation may first support periodic updates and
-then add triggered updates through the same `rip_send_update` path.
+- `rip_update_handler` sends route advertisements on the periodic update timer.
+- `rip_timeout_handler` marks stale routes unreachable and removes their
+  forwarding route.
+- The next periodic update advertises the RIP DB state.
+
+Protocol note: real RIP may also send triggered updates when a route changes.
+A triggered update is an immediate advertisement caused by the change, rather
+than waiting for the next 30-second periodic timer. This module does not
+implement triggered updates in this milestone.
 
 ### UDP Port 520
 
@@ -98,26 +185,34 @@ RIP runs over UDP port `520`.
 
 RIPv2 normally sends updates to multicast address `224.0.0.9`.
 
-Important current-stack constraint: the current `ip_output` path only sends to
-destinations on the same subnet as the selected source interface. That means
-RIPv2 multicast output needs either:
+This simulator supports the RIPv2 multicast destination through the IPv4
+output path:
 
-- IP output support for link-local multicast destinations, or
-- a first milestone that sends directed unicast updates to configured neighbors.
+```text
+224.0.0.9 -> 01:00:5e:00:00:09
+```
 
-The RIP spec must not pretend multicast already works if IP output still
-rejects it.
+RIP send code should therefore use `RIP_MULTICAST` as the destination for
+periodic updates on enabled interfaces. The IP module must skip ARP for this
+destination and send the packet to the derived Ethernet multicast MAC.
 
 ### RIP Receive Context
 
 `udp_receive` calls a bound UDP callback:
 
 ```c
-void rip_receive(uint32_t src_ip,
-                 uint16_t src_port,
-                 Packet *payload,
-                 void *ctx);
+void rip_receive(Interface *iface,
+                 uint32_t   src_ip,
+                 uint16_t   src_port,
+                 Packet    *payload,
+                 void      *ctx);
 ```
+
+UDP passes `rip_receive` the interface that received the UDP packet. When
+`rip_receive` stores or updates a RIP DB entry for a route learned from this
+packet, it stores that interface in the RIP DB entry's `learned_on` field. RIP
+uses that field later for split horizon, so it does not advertise the route
+back out the same interface.
 
 The `ctx` pointer must identify the RIP instance that owns:
 
@@ -155,7 +250,6 @@ It does not:
 - own the global simulator
 - replace the route table
 - implement OSPF/BGP/EIGRP behavior
-- guarantee multicast delivery unless IP output supports it
 
 ## Architecture Boundary
 
@@ -323,7 +417,8 @@ void rip_init(RipState *state,
 
 int rip_enable_iface(RipState *state, Interface *iface);
 
-void rip_receive(uint32_t src_ip,
+void rip_receive(Interface *iface,
+                 uint32_t src_ip,
                  uint16_t src_port,
                  Packet *payload,
                  void *ctx);
@@ -350,37 +445,77 @@ must still produce the same result: UDP port 520 delivers payloads to
 ## Function Behavior
 
 Function behavior is an implementation contract. For simple functions, the
-required-behavior list is written in execution order unless the text explicitly
-says order does not matter. For non-trivial functions, especially functions with
-ownership transfer, queueing, lookup, selection, state-machine transitions, or
-packet forwarding, split the section into behavior summary, implementation
-order, and postconditions so the coder does not have to guess.
+`Implementation order` list is written in execution order unless the text
+explicitly says order does not matter. For non-trivial functions, especially
+functions with ownership transfer, queueing, lookup, selection, state-machine
+transitions, or packet forwarding, split the section into concept, behavior
+summary, implementation order, and postconditions so the coder does not have
+to guess.
 
 
 ### `rip_init`
 
-Required behavior:
+Behavior summary:
+
+`rip_init` prepares caller-owned RIP state for one router. After a successful
+non-NULL initialization, the RIP database is empty, no interfaces are enabled
+yet, the owner pointers are stored, UDP port `520` is connected to
+`rip_receive` when UDP state exists, and the first periodic update is scheduled
+when a scheduler exists. The first timeout scan and first garbage-collection
+scan are also scheduled when a scheduler exists, so learned routes can expire
+without another module having to create those events.
+
+Implementation order:
 
 - If `state == NULL`, return immediately.
-- Zero all RIP state.
+- Clear the entire `RipState` object.
 - Store `sim`, `router`, and `udp_state`.
-- If `udp_state != NULL`, bind UDP port `520` to `rip_receive` with `state` as
-  context.
+- If `udp_state != NULL`, call the UDP bind function for:
+  - UDP state: `udp_state`
+  - local port: `RIP_PORT`
+  - receive callback: `rip_receive`
+  - callback context: `state`
+- If UDP bind fails, keep the already-initialized state and continue. This API
+  returns `void`, so there is no error code to return.
 - If `sim != NULL && sim->sched != NULL`, schedule first RIP update at
   `scheduler_now(sim->sched) + RIP_UPDATE_INTERVAL_US`.
+- If `sim != NULL && sim->sched != NULL`, schedule first RIP timeout scan at
+  `scheduler_now(sim->sched) + RIP_TIMEOUT_US`.
+- If `sim != NULL && sim->sched != NULL`, schedule first RIP garbage-collection
+  scan at `scheduler_now(sim->sched) + RIP_GC_US`.
 
-If UDP bind fails, state remains initialized but RIP receive will not work. The
-implementation may record that as a status field later; this initial API returns
-`void`, so KLEVA should verify observable state rather than an error code.
+Postconditions after `state != NULL`:
+
+- `state->db_count == 0`.
+- Every RIP database slot is invalid.
+- `state->iface_count == 0`.
+- Every entry in `state->ifaces[0 .. RIP_MAX_IFACES - 1]` is `NULL`.
+- `state->sim == sim`.
+- `state->router == router`.
+- `state->udp_state == udp_state`.
+
+If UDP bind fails, RIP receive will not work, but the initialized state above is
+still valid. This API returns `void`, so there is no error value to report.
 
 ### `rip_enable_iface`
 
-Required behavior:
+Concept:
+
+RIP sends updates only on interfaces explicitly enabled for this `RipState`.
+The list stores borrowed interface pointers; it does not create, configure, or
+free interfaces.
+
+Calling `rip_enable_iface` twice with the same interface is harmless. The
+second call should return success without changing `iface_count`.
+
+Implementation order:
 
 - If `state == NULL || iface == NULL`, return `-1`.
 - If the interface is already enabled, return `0`.
 - If `iface_count >= RIP_MAX_IFACES`, return `-1`.
-- Store the interface in the first free enabled-interface slot.
+- Scan `state->ifaces[0 .. RIP_MAX_IFACES - 1]` for the first unused slot,
+  where unused means `state->ifaces[i] == NULL`.
+- Store `iface` in that slot.
 - Increment `iface_count`.
 - Return `0`.
 
@@ -388,104 +523,286 @@ RIP does not take ownership of the interface.
 
 ### `rip_receive`
 
-Required behavior:
+Concept:
+
+A RIP payload starts with one fixed-size `RipHeader`, followed by zero or more
+fixed-size `RipEntry` records. Length validation has two parts: first prove the
+payload is large enough for the header, then prove the remaining bytes form
+whole route entries. After that, the implementation can count the complete
+entries after the header.
+
+This module accepts one normal RIP message's worth of routes at a time. A
+message with more than `RIP_MAX_ROUTES` entries is rejected before parsing
+individual entries.
+
+Each route entry in the packet is only input. For each parsed route, RIP must
+find or create a `RipRouteInfo` entry in `state->db`. The RIP DB entry is the
+object that stores `learned_on`, `last_update`, `state`, `valid`, metric, and
+next-hop state.
+
+Implementation order:
 
 - If `payload == NULL`, return.
 - If `ctx == NULL`, free payload and return.
 - Cast `ctx` to `RipState *`.
+- If `iface == NULL`, free payload and return.
 - If `state->router == NULL`, free payload and return.
+- If `state->sim == NULL` or `state->sim->sched == NULL`, free payload and
+  return.
 - If `payload->len < RIP_HDR_LEN`, free payload and return.
 - If `(payload->len - RIP_HDR_LEN) % RIP_ENTRY_LEN != 0`, free payload and
   return.
-- Reject messages with more than `RIP_MAX_ROUTES` entries.
-- Parse header.
-- Accept only version `2`.
-- Accept response/update messages in the first implementation.
+- Count the complete RIP route entries after the header.
+- If that count is greater than `RIP_MAX_ROUTES`, free payload and return.
+- Read the RIP header from the start of `payload->data`.
+- Check the one-byte `version` field. If it is not `RIP_VERSION`, free payload
+  and return.
+- Check the one-byte `command` field. If it is not `RIP_CMD_RESPONSE`, free
+  payload and return.
+- Ignore the header `zero` field in this milestone.
+- Read the current simulated time from `state->sim->sched`; this timestamp is
+  used as `last_update` for RIP DB entries changed by this packet.
 - For each entry:
-  - require AFI IPv4
-  - convert prefix, subnet mask, next hop, and metric to host order
-  - derive prefix length from the subnet mask
-  - reject non-contiguous masks
-  - cap metric at `RIP_INFINITY`
-  - received candidate metric is `min(entry_metric + 1, RIP_INFINITY)`
-  - if entry next hop is zero, use `src_ip` as route next hop
-  - choose the incoming interface that should be recorded as `learned_on`
-  - if metric is less than `RIP_INFINITY`, update RIP DB and install route as
-    `ROUTE_PROTO_RIP`
-  - if metric is `RIP_INFINITY`, mark DB route for garbage collection and
-    remove or poison the route-table entry
+  - Treat the entry pointer as packet data only. Do not store RIP DB state in
+    the `RipEntry` object.
+  - Convert AFI from network order to host order.
+  - If AFI is not `RIP_AFI_IPV4`, skip this route entry.
+  - Convert prefix, subnet mask, next hop, and metric from network order to
+    host order.
+  - Pass the host-order subnet mask to `ip_mask_to_prefix_len`.
+  - If the helper rejects the mask as non-contiguous, skip this route entry.
+  - Otherwise use the returned prefix length for the RIP route.
+  - Normalize the parsed prefix with the returned prefix length before DB
+    lookup or router updates. For example, a received `192.168.1.7/24` route is
+    stored and installed as `192.168.1.0/24`.
+  - Normalize the received metric so it is not greater than `RIP_INFINITY`.
+  - Add one hop for the cost of reaching the advertising neighbor. If that
+    addition would exceed `RIP_INFINITY`, keep the candidate metric at
+    `RIP_INFINITY`.
+  - If entry next hop is zero, use `src_ip` as route next hop.
+  - Search `state->db[0 .. RIP_DB_SIZE - 1]` for a valid `RipRouteInfo` whose
+    `prefix` and `prefix_len` match the parsed route.
+  - Keep the result of that search as the chosen RIP DB entry. If the search
+    found no entry, the chosen RIP DB entry is still absent at this point.
+  - If the candidate metric is `RIP_INFINITY` and no matching RIP DB entry was
+    found, skip this route entry. There is no local RIP DB route to mark
+    unreachable.
+  - If the candidate metric is `RIP_INFINITY` and a matching RIP DB entry was
+    found, update that existing RIP DB entry:
+    - set `metric = RIP_INFINITY`
+    - set `state = RIP_ROUTE_GC`
+    - set `learned_on` to the `iface` passed to `rip_receive`
+    - set `last_update` to current scheduler time
+    - leave `valid = 1`
+  - After marking an existing route unreachable, call
+    `router_del_route(state->router, prefix, prefix_len, ROUTE_PROTO_RIP)`,
+    then continue to the next packet entry.
+  - At this point, the candidate metric is reachable because unreachable
+    candidates have already been handled.
+  - If no matching RIP DB entry was found, scan
+    `state->db[0 .. RIP_DB_SIZE - 1]` for the first invalid slot.
+  - If no invalid slot exists, skip this route entry.
+  - If an invalid slot exists, make that slot the chosen RIP DB entry and
+    increment `db_count` once.
+  - Update the chosen RIP DB entry:
+    - set `prefix`
+    - set `prefix_len`
+    - set `metric` to the candidate metric
+    - set `next_hop`
+    - set `learned_on` to the `iface` passed to `rip_receive`
+    - set `last_update` to current scheduler time
+    - set `state = RIP_ROUTE_ACTIVE`
+    - set `valid = 1`
+  - After updating the chosen RIP DB entry, call `router_add_route` with:
+    - router `state->router`
+    - the parsed prefix and prefix length
+    - the resolved next hop
+    - egress interface `iface`
+    - the candidate metric
+    - protocol `ROUTE_PROTO_RIP`
 - Free payload before returning.
 
-Incoming interface discovery is a design point. Because UDP callbacks currently
-receive source IP and source port, but not the ingress `Interface *`, the first
-implementation needs one of these choices:
-
-- extend UDP callback context/path to include ingress interface, or
-- infer the enabled interface from source IP/subnet, or
-- include ingress interface in a RIP-specific receive wrapper.
-
-The spec requires `learned_on` for split horizon, so this must be solved before
-RIP can be fully correct.
+UDP passes the receiving interface directly to `rip_receive`. RIP must not
+infer `learned_on` from source IP or topology search when the receive function
+already has the exact interface.
 
 ### `rip_send_update`
 
-Required behavior:
+Concept:
+
+`rip_send_update` advertises the current RIP DB state on one enabled interface.
+It reads `RipRouteInfo` entries from `state->db` and encodes packet
+`RipEntry` records for UDP output.
+
+Split horizon is applied here. If a RIP DB route was learned on `out_iface`,
+that route is omitted from the update sent on `out_iface`.
+
+`udp_send` takes a raw UDP payload buffer, not a `Packet *`. Therefore
+`rip_send_update` builds the RIP payload bytes in a local buffer, passes that
+buffer to `udp_send`, and does not call `packet_create` itself.
+
+RIP packet entries are wire records. The send path reads each selected
+`RipRouteInfo` from `state->db` and writes a corresponding `RipEntry` into the
+payload buffer. It must not expose `RipRouteInfo` memory directly as packet
+bytes.
+
+Implementation order:
 
 - If `state == NULL || out_iface == NULL`, return `-1`.
 - If `state->sim == NULL`, return `-1`.
-- Build one or more RIP response payloads.
-- Each payload starts with `RipHeader`:
-  - command `RIP_CMD_RESPONSE`
-  - version `RIP_VERSION`
-  - zero field `0`
-- Add at most `RIP_MAX_ROUTES` entries per payload.
-- For each valid RIP DB entry:
-  - if `entry.learned_on == out_iface`, skip it for split horizon
-  - otherwise encode prefix, mask, next hop, and metric
-- Send each payload with UDP source port and destination port `520`.
-- Source IP is `ns_ntohl(out_iface->ip_addr)`.
-- Destination IP is `RIP_MULTICAST` when multicast output is supported.
-- Return `0` if all needed update packets are sent or no routes need sending.
-- Return `-1` if payload construction or UDP send fails.
+- Create a local byte array named `payload` with room for one `RipHeader` and
+  `RIP_MAX_ROUTES` `RipEntry` records. This array starts empty; it is not
+  copied from `state->db`.
+- Keep a local counter named `entry_count` for how many `RipEntry` records have
+  been encoded into `payload` since the last send.
+- Compute `src_ip = ns_ntohl(out_iface->ip_addr)`. Interface addresses are
+  stored in network byte order, while `udp_send` and `ip_output` take
+  host-order IPv4 addresses.
+- Set `dst_ip = RIP_MULTICAST`. This value is the destination IP argument for
+  later `udp_send` calls; it is not written into the RIP payload bytes.
+- Start the first empty response payload by writing a `RipHeader` at
+  `payload[0]`:
+  - `command = RIP_CMD_RESPONSE`
+  - `version = RIP_VERSION`
+  - `zero = 0` in network byte order
+- Set `entry_count = 0` after initializing the header.
+- Scan `state->db[0 .. RIP_DB_SIZE - 1]` from low index to high index.
+- For each RIP DB entry:
+  - if `valid == 0`, skip it
+  - if `learned_on == out_iface`, skip it for split horizon
+  - otherwise write this DB entry into the next route-entry position in
+    `payload`
+- To encode one `RipEntry` from a `RipRouteInfo`:
+  - the first `RIP_HDR_LEN` bytes of `payload` already contain the `RipHeader`
+  - route entries begin immediately after that header
+  - `entry_count` tells which route-entry position is being filled now
+  - when `entry_count == 0`, write the first `RipEntry` at
+    `payload + RIP_HDR_LEN`
+  - when `entry_count == 1`, write the second `RipEntry` at
+    `payload + RIP_HDR_LEN + RIP_ENTRY_LEN`
+  - in general, write the next `RipEntry` at
+    `payload + RIP_HDR_LEN + entry_count * RIP_ENTRY_LEN`
+  - treat that address as a `RipEntry *` while filling the wire fields
+  - set `afi = RIP_AFI_IPV4` in network byte order
+  - set `route_tag = 0` in network byte order
+  - set `ip_addr` to `entry.prefix` in network byte order
+  - derive the subnet mask from `entry.prefix_len` and store it in network byte
+    order
+  - set `next_hop` to `entry.next_hop` in network byte order
+  - set `metric` to `entry.metric`, capped at `RIP_INFINITY`, in network byte
+    order
+- After encoding an entry, increment the current payload entry count.
+- If the current payload reaches `RIP_MAX_ROUTES` entries, send that payload
+  immediately with `udp_send`.
+- The immediate `udp_send` call uses:
+  - simulator `state->sim`
+  - source IP `src_ip`
+  - destination IP `dst_ip`
+  - UDP source port `RIP_PORT`
+  - UDP destination port `RIP_PORT`
+  - pointer `payload`
+  - payload length `RIP_HDR_LEN + entry_count * RIP_ENTRY_LEN`
+- Immediately check the return value from this `udp_send` call.
+- If this `udp_send` call returns `-1`, stop and return `-1`.
+- After a full payload is sent, start a new empty response payload in the same
+  `payload` array:
+  - write a fresh `RipHeader` at `payload[0]`
+  - set `entry_count = 0`
+  - continue scanning the remaining RIP DB entries
+- When the scan finishes, if the current payload has one or more entries, send
+  that final payload with the same `udp_send` argument pattern.
+- Immediately check the final `udp_send` return value.
+- If the final `udp_send` call returns `-1`, return `-1`.
+- If the scan finishes without any sendable entries, return `0`.
+- Return `0` after all needed update payloads are sent.
 
-Current-stack warning: `udp_send` uses `ip_output`, and current `ip_output`
-does not support `224.0.0.9` multicast. If multicast support is not added
-before RIP, use configured unicast neighbors for the first milestone and state
-that choice in the implementation notes.
+`udp_send` uses `ip_output`. The IP module owns the multicast mapping, so RIP
+send code does not build Ethernet multicast MAC addresses itself.
 
 ### `rip_update_handler`
 
-Required behavior:
+Concept:
+
+This is the periodic advertisement timer. When it fires, RIP sends updates on
+each enabled interface and then schedules the next update timer. It does not
+decide whether routes have expired; timeout and garbage collection own route
+aging.
+
+Implementation order:
 
 - If event/context is missing, return.
 - Context is `RipState *`.
+- If `state->sim == NULL` or `state->sim->sched == NULL`, return.
 - For each enabled interface, call `rip_send_update`.
 - Schedule the next update at current scheduler time plus
   `RIP_UPDATE_INTERVAL_US`.
 
 ### `rip_timeout_handler`
 
-Required behavior:
+Concept:
+
+Timeout is the first phase of removing a stale RIP route. A route becomes stale
+when it is active but has not been refreshed for more than `RIP_TIMEOUT_US`.
+The timeout handler stops forwarding through that route immediately by deleting
+the `ROUTE_PROTO_RIP` route from the Router route table.
+
+The RIP DB entry is not deleted yet. It is moved to `RIP_ROUTE_GC` with metric
+`RIP_INFINITY`, so the later garbage-collection phase can remove it after the
+GC delay.
+
+Implementation order:
 
 - If event/context is missing, return.
-- Find the RIP DB entry identified by event data or route key.
-- If the route has not been refreshed before timeout:
-  - set metric to `RIP_INFINITY`
-  - move state to garbage collection
-  - delete or poison the `ROUTE_PROTO_RIP` route in Router/RouteTable
-  - schedule garbage collection after `RIP_GC_US`
-  - send triggered update when triggered updates are implemented
+- Context is `RipState *`.
+- If `state->sim == NULL` or `state->sim->sched == NULL`, return.
+- Read the current simulated time from the scheduler.
+- Scan `state->db[0 .. RIP_DB_SIZE - 1]`.
+- For each entry where `valid == 1` and `state == RIP_ROUTE_ACTIVE`:
+  - compute how long it has been since `entry.last_update`
+  - if that age is less than or equal to `RIP_TIMEOUT_US`, leave the entry
+    unchanged
+  - otherwise set `metric = RIP_INFINITY`
+  - set `state = RIP_ROUTE_GC`
+  - call `router_del_route(state->router,
+                           entry.prefix,
+                           entry.prefix_len,
+                           ROUTE_PROTO_RIP)` if `state->router != NULL`
+- Schedule the next timeout scan at current scheduler time plus
+  `RIP_TIMEOUT_US`.
+
+This handler is a periodic scan. The event only means "run the timeout scan";
+`e->data` does not identify a route.
 
 ### `rip_gc_handler`
 
-Required behavior:
+Concept:
+
+Garbage collection is the second phase of removing a stale RIP route. It only
+touches entries that are already valid and in `RIP_ROUTE_GC`.
+
+The `learned_on` pointer is borrowed. Garbage collection must not free that
+interface. It only clears the pointer stored in the RIP DB entry before
+invalidating the entry.
+
+Implementation order:
 
 - If event/context is missing, return.
-- Find the RIP DB entry identified by event data or route key.
-- If it is still in garbage-collection state:
-  - invalidate the DB entry
-  - clear borrowed interface pointer
-  - decrement `db_count`
+- Context is `RipState *`.
+- If `state->sim == NULL` or `state->sim->sched == NULL`, return.
+- Read the current simulated time from the scheduler.
+- Scan `state->db[0 .. RIP_DB_SIZE - 1]`.
+- For each entry where `valid == 1` and `state == RIP_ROUTE_GC`:
+  - compute how long it has been since `entry.last_update`
+  - if that age is less than or equal to `RIP_TIMEOUT_US + RIP_GC_US`, leave
+    the entry unchanged
+  - otherwise set `entry.valid = 0`
+  - set `entry.learned_on = NULL`
+  - decrement `db_count` once for this invalidated RIP DB entry
+- Schedule the next garbage-collection scan at current scheduler time plus
+  `RIP_GC_US`.
+
+This handler is also a periodic scan. The event only means "run the GC scan";
+`e->data` does not identify a route.
 
 ## Flow Charts
 
@@ -504,23 +821,27 @@ rip_init(state, sim, router, udp_state)
 ### Receive Update
 
 ```text
-rip_receive(src_ip, src_port, payload, state)
+rip_receive(iface, src_ip, src_port, payload, state)
   |
   +-- validate payload/header/entry count
   +-- for each entry:
         |
-        +-- metric = min(received_metric + 1, 16)
         +-- prefix_len = mask_to_prefix_len(subnet_mask)
+        +-- candidate_metric = received metric plus one hop, capped at 16
+        +-- find matching RipRouteInfo by prefix/prefix_len
         |
-        +-- metric < 16:
-        |     update RIP DB
-        |     router_add_route(... ROUTE_PROTO_RIP)
-        |     schedule timeout
+        +-- candidate_metric < 16:
+        |     use existing DB entry or allocate invalid DB slot
+        |     update RipRouteInfo fields
+        |     router_add_route(router, prefix, prefix_len, next_hop,
+        |                      iface, candidate_metric, ROUTE_PROTO_RIP)
         |
-        +-- metric == 16:
-              mark RIP DB route unreachable
-              router_del_route(... ROUTE_PROTO_RIP)
-              schedule garbage collection
+        +-- candidate_metric == 16 and existing DB entry exists:
+        |     mark RipRouteInfo metric=16 and state=RIP_ROUTE_GC
+        |     router_del_route(router, prefix, prefix_len, ROUTE_PROTO_RIP)
+        |
+        +-- candidate_metric == 16 and no existing DB entry:
+              skip entry
 ```
 
 ### Send Update
@@ -641,18 +962,19 @@ int rip_enable_iface(RipState *state, Interface *iface);
         assumes payload == \null;
         assigns \nothing;
 
-    behavior bad_ctx:
-        assumes payload != \null && ctx == \null;
-        assigns \nothing;
+    behavior bad_input:
+        assumes payload != \null && (ctx == \null || iface == \null);
+        assigns \everything;
 
     behavior valid:
         assumes payload != \null;
         assumes ctx != \null;
+        assumes iface != \null;
         assumes rip_state_well_formed((RipState *)ctx);
-        assigns ((RipState *)ctx)->db[0 .. 127],
-                ((RipState *)ctx)->db_count;
+        assigns \everything;
 */
-void rip_receive(uint32_t src_ip,
+void rip_receive(Interface *iface,
+                 uint32_t src_ip,
                  uint16_t src_port,
                  Packet *payload,
                  void *ctx);
@@ -660,7 +982,9 @@ void rip_receive(uint32_t src_ip,
 
 Additional required proof/test property:
 
-- `rip_receive` frees non-NULL payload on every path.
+- `rip_receive(NULL payload)` returns without freeing.
+- `rip_receive` frees non-NULL payload on every path where it does not
+  transfer ownership elsewhere.
 - Valid metric is incremented by one and capped at `16`.
 - Metric `16` does not install a forwarding route.
 
@@ -676,7 +1000,7 @@ Additional required proof/test property:
     behavior valid:
         assumes rip_state_well_formed(state);
         assumes \valid(out_iface);
-        assigns \nothing;
+        assigns \everything;
         ensures \result == 0 || \result == -1;
 
     complete behaviors;
@@ -684,6 +1008,12 @@ Additional required proof/test property:
 */
 int rip_send_update(RipState *state, Interface *out_iface);
 ```
+
+This contract intentionally uses `assigns \everything` for the valid behavior
+because `rip_send_update` calls `udp_send`, which can allocate packets, prepend
+UDP/IP/Ethernet headers through lower layers, update interface transmit state,
+queue packets, free packets on failure, and schedule/send through the simulator.
+A narrower contract requires modeled contracts for that whole send path first.
 
 ### Event Handlers
 
@@ -696,13 +1026,18 @@ int rip_send_update(RipState *state, Interface *out_iface);
     behavior valid:
         assumes e != \null && ctx != \null;
         assumes rip_state_well_formed((RipState *)ctx);
-        assigns ((RipState *)ctx)->db[0 .. 127],
-                ((RipState *)ctx)->db_count;
+        assigns \everything;
 */
 void rip_update_handler(const Event *e, void *ctx);
 void rip_timeout_handler(const Event *e, void *ctx);
 void rip_gc_handler(const Event *e, void *ctx);
 ```
+
+The event-handler contract intentionally over-approximates effects with
+`\everything`, because these handlers may call UDP send, Router route deletion,
+event allocation, scheduler insertion, and event cleanup helpers. A narrower
+contract must model those callees first instead of pretending the handlers only
+touch RIP DB fields.
 
 ## KLEVA Verification Plan
 
@@ -724,21 +1059,27 @@ Minimum KLEVA tests:
 14. `rip_receive` rejects invalid entry alignment.
 15. `rip_receive` rejects more than 25 entries.
 16. `rip_receive` rejects wrong RIP version.
-17. `rip_receive` rejects non-IPv4 AFI entries.
-18. `rip_receive` rejects non-contiguous subnet mask.
-19. Received metric `1` installs route with metric `2`.
-20. Received metric `15` installs route with metric `16` only as unreachable.
-21. Received metric `16` removes or poisons route.
-22. Entry next hop `0` uses sender IP as next hop.
-23. Nonzero entry next hop is preserved.
-24. Split horizon omits routes learned on outgoing interface.
-25. Update packet contains at most 25 entries.
-26. Periodic update sends one update per enabled interface.
-27. Timeout marks stale route unreachable.
-28. Garbage collection invalidates stale unreachable route.
-29. Valid receive frees payload after parsing.
-30. Multicast output limitation is covered by either IP multicast support test
-    or directed-neighbor milestone test.
+17. `rip_receive` skips non-IPv4 AFI entries.
+18. `rip_receive` skips entries with non-contiguous subnet masks.
+19. Received metric `1` stores RIP DB metric `2` and installs route with
+    `ROUTE_PROTO_RIP`.
+20. Received metric `15` becomes candidate metric `16`.
+21. Received metric `16` removes the matching `ROUTE_PROTO_RIP` route from the
+    Router route table and keeps the RIP DB entry in garbage collection.
+22. Unreachable received route with no existing RIP DB entry is skipped.
+23. Reachable received route allocates an invalid RIP DB slot when no matching
+    entry exists.
+24. Reachable received route is skipped when RIP DB is full.
+25. Entry next hop `0` uses sender IP as next hop.
+26. Nonzero entry next hop is preserved.
+27. Split horizon omits routes learned on outgoing interface.
+28. Update packet contains at most 25 entries.
+29. Periodic update sends one update per enabled interface.
+30. Timeout marks stale route unreachable.
+31. Garbage collection invalidates stale unreachable route.
+32. Valid receive frees payload after parsing.
+33. RIP multicast send path is covered by an IP multicast output integration
+    test for `224.0.0.9`.
 
 ## Common Mistakes
 
@@ -749,7 +1090,10 @@ Minimum KLEVA tests:
 - Do not advertise a route back out the interface it was learned on.
 - Do not use milliseconds for scheduler timestamps; scheduler uses
   microseconds.
-- Do not assume `224.0.0.9` works until IP output supports multicast.
+- Do not build Ethernet multicast MAC addresses in RIP; IP output owns that
+  mapping.
 - Do not ignore the ingress-interface problem; split horizon needs it.
 - Do not let UDP inspect RIP routes.
 - Do not leak the UDP payload passed to `rip_receive`.
+- Do not write `learned_on`, `valid`, `state`, or `last_update` into a packet
+  `RipEntry`; those fields belong to `RipRouteInfo` in `state->db`.

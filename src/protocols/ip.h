@@ -14,9 +14,13 @@
 #define IPPROTO_ICMP       1
 #define IPPROTO_TCP        6
 #define IPPROTO_UDP        17
+#define IPPROTO_EIGRP      88
+#define IPPROTO_OSPF       89
 #define IP_DEFAULT_TTL     64
 #define IP_FLAG_DF         0x4000   // Don't Fragment flag
 #define IP_MAX_PACKET_SIZE 65535    // Maximum size of an IP packet (header + payload)
+#define IP_MULTICAST_BASE  0xE0000000u
+#define IP_MULTICAST_MASK  0xF0000000u
 
 
 typedef int (*IpProtocolHandler)(Interface *iface,
@@ -45,6 +49,16 @@ typedef struct __attribute__((packed)) IpHeader {
     uint32_t src_ip;                // Source IP address (network byte order)
     uint32_t dst_ip;                // Destination IP address (network byte order)
 } IpHeader;
+
+/*@
+    axiomatic IpLogicPredicates {
+        predicate ip_header_checksum_valid{L}(IpHeader *ip_hdr);
+        predicate ip_addr_is_multicast(uint32_t ip_addr) =
+            ((ip_addr & IP_MULTICAST_MASK) == IP_MULTICAST_BASE);
+        predicate ip_subnet_mask_contiguous(uint32_t mask);
+        predicate ip_mask_prefix_length(uint32_t mask, uint8_t prefix_len);
+    }
+*/
 
 
 /*@ 
@@ -220,6 +234,55 @@ int  ip_output(Simulator *sim,
                 Packet   *payload);
 
 /*@
+    assigns \nothing;
+    ensures \result == 0 || \result == 1;
+    ensures \result == 1 <==> ip_addr_is_multicast(ip_addr);
+*/
+int       ip_is_multicast(uint32_t ip_addr);
+
+/*@
+    behavior bad_input:
+        assumes out_mac == \null || !ip_addr_is_multicast(ip_addr);
+        assigns \nothing;
+        ensures \result == -1;
+
+    behavior valid:
+        assumes \valid(out_mac + (0 .. 5));
+        assumes ip_addr_is_multicast(ip_addr);
+        assigns out_mac[0 .. 5];
+        ensures \result == 0;
+        ensures out_mac[0] == 0x01;
+        ensures out_mac[1] == 0x00;
+        ensures out_mac[2] == 0x5e;
+        ensures out_mac[3] == ((ip_addr >> 16) & 0x7f);
+        ensures out_mac[4] == ((ip_addr >> 8) & 0xff);
+        ensures out_mac[5] == (ip_addr & 0xff);
+
+    complete behaviors;
+    disjoint behaviors;
+*/
+int       ip_multicast_to_mac(uint32_t ip_addr, uint8_t out_mac[6]);
+
+/*@
+    behavior bad_input:
+        assumes out_prefix_len == \null || !ip_subnet_mask_contiguous(mask);
+        assigns \nothing;
+        ensures \result == -1;
+
+    behavior valid:
+        assumes \valid(out_prefix_len);
+        assumes ip_subnet_mask_contiguous(mask);
+        assigns *out_prefix_len;
+        ensures \result == 0;
+        ensures *out_prefix_len <= 32;
+        ensures ip_mask_prefix_length(mask, *out_prefix_len);
+
+    complete behaviors;
+    disjoint behaviors;
+*/
+int       ip_mask_to_prefix_len(uint32_t mask, uint8_t *out_prefix_len);
+
+/*@
     behavior null_or_short:
         assumes pkt == \null || pkt->data == \null || pkt->len < IP_HDR_LEN;
         assigns \nothing;
@@ -233,7 +296,7 @@ int  ip_output(Simulator *sim,
         assumes (((IpHeader *)pkt->data)->version_ihl >> 4) != IP_VERSION ||
                 (((IpHeader *)pkt->data)->version_ihl & 0x0F) !=
                     (IP_HDR_LEN / 4) ||
-                ip_checksum((IpHeader *)pkt->data) != 0;
+                !ip_header_checksum_valid((IpHeader *)pkt->data);
         assigns \nothing;
         ensures \result == -1;
 
@@ -245,7 +308,7 @@ int  ip_output(Simulator *sim,
         assumes ((IpHeader *)pkt->data)->version_ihl >> 4 == IP_VERSION;
         assumes (((IpHeader *)pkt->data)->version_ihl & 0x0F) ==
                 (IP_HDR_LEN / 4);
-        assumes ip_checksum((IpHeader *)pkt->data) == 0;
+        assumes ip_header_checksum_valid((IpHeader *)pkt->data);
         assigns \nothing;
         ensures \result == 0;
 

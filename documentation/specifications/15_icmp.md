@@ -221,6 +221,23 @@ Field meanings:
 
 All multi-byte ICMP fields are stored in network byte order.
 
+Wire layout:
+
+```text
+0                   1                   2                   3
++-------------------+-------------------+-------------------+-------------------+
+| type              | code              | checksum                              |
++-------------------+-------------------+-------------------+-------------------+
+| id / rest high 16 bits                | seq / rest low 16 bits                |
++-------------------+-------------------+-------------------+-------------------+
+| ICMP payload or quoted original packet bytes ...                             |
++-------------------------------------------------------------------------------+
+  8-byte fixed ICMP header
+```
+
+For echo request/reply, the last four header bytes are `id` and `seq`. For
+error messages, the same bytes are the ICMP "rest of header" field.
+
 ## Ownership And Lifetime
 
 `icmp_receive` consumes every non-NULL packet it is given.
@@ -295,16 +312,19 @@ uint16_t icmp_checksum(const void *data, size_t len);
 ## Function Behavior
 
 Function behavior is an implementation contract. For simple functions, the
-required-behavior list is written in execution order unless the text explicitly
-says order does not matter. For non-trivial functions, especially functions with
-ownership transfer, queueing, lookup, selection, state-machine transitions, or
-packet forwarding, split the section into behavior summary, implementation
-order, and postconditions so the coder does not have to guess.
+`Implementation order` list is written in execution order unless the text
+explicitly says order does not matter. For non-trivial functions, especially
+functions with ownership transfer, queueing, lookup, selection, state-machine
+transitions, or packet forwarding, split the section into behavior summary,
+implementation order, and postconditions so the coder does not have to guess.
+Do not mix final-state facts into `Implementation order`; put them under
+`Postconditions` unless the implementation must check that fact at that exact
+point in control flow.
 
 
 ### `icmp_receive`
 
-Required behavior:
+Implementation order:
 
 - Cast `ctx` to `Simulator *`.
 - If `iface == NULL`, return `-1`.
@@ -351,7 +371,7 @@ Supported-but-consumed messages do not increment `rx_dropped`.
 
 ### `icmp_send_echo_request`
 
-Required behavior:
+Implementation order:
 
 - If `sim == NULL`, return `-1`.
 - If `payload_len > 0 && payload == NULL`, return `-1`.
@@ -376,7 +396,7 @@ Required behavior:
 
 ### `icmp_send_echo_reply`
 
-Required behavior:
+Implementation order:
 
 - If `sim == NULL`, return `-1`.
 - If `iface == NULL`, return `-1`.
@@ -429,7 +449,7 @@ Required behavior:
 This helper is static inside `icmp.c`. Public error helper functions all call
 it.
 
-Required behavior:
+Implementation order:
 
 - If `sim == NULL`, `iface == NULL`, or `orig_pkt == NULL`, return `-1`.
 - If `orig_pkt->head == NULL` or `orig_pkt->data == NULL`:
@@ -495,7 +515,7 @@ lifetime after the helper returns.
 
 ### `icmp_checksum`
 
-Required behavior:
+Implementation order:
 
 - If `data == NULL`, return `0xFFFF`.
 - If `len == 0`, return `0xFFFF`.
