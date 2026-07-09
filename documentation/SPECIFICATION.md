@@ -21,14 +21,14 @@ reflects actual in-memory state.
 | Simulation mode | Event-driven, single-threaded loop (Phase 1) |
 | Concurrency | Per-device threads with event queues (Phase 2) |
 | Interface | CLI with ASCII topology + formatted header boxes |
-| Extensibility | Protocol plugin interface for BGP, EIGRP, VLANs, etc. |
+| Extensibility | Protocol plugin interface for BGP, IS-IS, VLANs, etc. |
 
 ### Out of Scope (Phase 1)
 - OSI Layers 5–7 (application logic)
 - Real raw sockets or live network traffic
 - Wireless / WiFi simulation
 - GUI (ncurses is a stretch goal)
-- BGP, EIGRP (Phase 2 modules)
+- BGP, IS-IS (Phase 2 modules)
 
 ---
 

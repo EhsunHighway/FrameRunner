@@ -98,7 +98,6 @@ different sources:
 - RIP routes
 - OSPF routes
 - BGP routes
-- EIGRP routes
 - IS-IS routes
 
 The RIB may contain multiple candidates for the same prefix. For example:
@@ -230,8 +229,7 @@ headers. It should only need integer types and `Interface`.
 #define ROUTE_PROTO_RIP             3
 #define ROUTE_PROTO_OSPF            4
 #define ROUTE_PROTO_BGP             5
-#define ROUTE_PROTO_EIGRP           6
-#define ROUTE_PROTO_ISIS            7
+#define ROUTE_PROTO_ISIS            6
 ```
 
 `0` is not a valid public route protocol.
@@ -276,14 +274,13 @@ Use these administrative distances:
 | direct | `0` |
 | static | `1` |
 | BGP | `20` |
-| EIGRP | `90` |
 | OSPF | `110` |
 | IS-IS | `115` |
 | RIP | `120` |
 
 This is a simplified but recognizable route-selection model. The route table
-does not implement full BGP, OSPF, EIGRP, or IS-IS decision logic; those
-protocol modules still own their protocol-specific algorithms.
+does not implement full BGP, OSPF, or IS-IS decision logic; those protocol
+modules still own their protocol-specific algorithms.
 
 ### `RouteRibEntry`
 
@@ -386,7 +383,6 @@ Implementation order:
 - `ROUTE_PROTO_DIRECT` returns `0`.
 - `ROUTE_PROTO_STATIC` returns `1`.
 - `ROUTE_PROTO_BGP` returns `20`.
-- `ROUTE_PROTO_EIGRP` returns `90`.
 - `ROUTE_PROTO_OSPF` returns `110`.
 - `ROUTE_PROTO_ISIS` returns `115`.
 - `ROUTE_PROTO_RIP` returns `120`.

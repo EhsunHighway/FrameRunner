@@ -53,7 +53,7 @@ should identify:
 - which fields are fixed, ignored, or simplified in this simulator
 
 This is required for protocol modules such as Ethernet, ARP, IPv4, ICMP, UDP,
-TCP, RIP, OSPF, BGP, EIGRP, and IS-IS. It is optional for internal-only data
+TCP, RIP, OSPF, BGP, and IS-IS. It is optional for internal-only data
 modules such as ARP cache, MAC table, route table, Host, Router, and CLI unless
 a visual layout would remove implementation ambiguity.
 
@@ -163,17 +163,16 @@ the real behavior, update the spec in the same change.
 | 22 | RIP | [22_rip.md](22_rip.md) | Updated |
 | 23 | OSPF | [23_ospf.md](23_ospf.md) | Updated |
 | 24 | BGP | [24_bgp.md](24_bgp.md) | Updated |
-| 25 | EIGRP | [25_eigrp.md](25_eigrp.md) | Updated |
-| 26 | IS-IS | [26_isis.md](26_isis.md) | Updated |
-| 27 | NAT / PAT | [27_nat.md](27_nat.md) | Updated |
+| 25 | IS-IS | [25_isis.md](25_isis.md) | Updated |
+| 26 | NAT / PAT | [26_nat.md](26_nat.md) | Updated |
 
 ## Phase 4 - Display And CLI
 
 | # | Module | Spec | Spec Status |
 | --- | --- | --- | --- |
-| 28 | Topology Display | [28_display_topology.md](28_display_topology.md) | Updated |
-| 29 | Packet Header Display | [29_display_packet.md](29_display_packet.md) | Updated |
-| 30 | CLI | [30_cli.md](30_cli.md) | Updated |
+| 27 | Topology Display | [27_display_topology.md](27_display_topology.md) | Updated |
+| 28 | Packet Header Display | [28_display_packet.md](28_display_packet.md) | Updated |
+| 29 | CLI | [29_cli.md](29_cli.md) | Updated |
 
 ## How To Use These Files
 

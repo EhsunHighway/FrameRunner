@@ -1,4 +1,4 @@
-# Module 30 - CLI
+# Module 29 - CLI
 
 **Files:** `src/cli/cli.c`, `src/cli/cli.h`, `src/cli/commands.c`,
 `src/cli/commands.h`

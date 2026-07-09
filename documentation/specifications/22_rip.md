@@ -249,7 +249,7 @@ It does not:
 - own Router interfaces
 - own the global simulator
 - replace the route table
-- implement OSPF/BGP/EIGRP behavior
+- implement OSPF/BGP/IS-IS behavior
 
 ## Architecture Boundary
 

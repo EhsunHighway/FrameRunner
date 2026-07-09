@@ -1,4 +1,4 @@
-# Module 26 - IS-IS
+# Module 25 - IS-IS
 
 **Files:** `src/protocols/isis.c`, `src/protocols/isis.h`
 **Status:** Ready for implementation; source files do not exist yet
@@ -25,7 +25,7 @@ but the spec must be honest:
 - real IS-IS is L2-native
 - IP protocol `124` is a simulator simplification, not real IS-IS
 - if the simulator uses IP protocol `124`, Router needs control-plane dispatch
-  for that protocol just like OSPF/EIGRP
+  for that protocol just like OSPF
 - if the simulator uses L2-native IS-IS later, Ethernet needs an IS-IS demux
   path
 

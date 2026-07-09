@@ -19,8 +19,6 @@ static int route_admin_distance(uint8_t proto) {
             return 1;
         case ROUTE_PROTO_BGP:
             return 20;
-        case ROUTE_PROTO_EIGRP:
-            return 90;
         case ROUTE_PROTO_OSPF:
             return 110;
         case ROUTE_PROTO_ISIS:

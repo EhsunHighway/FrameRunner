@@ -8,7 +8,7 @@
 Static routing means the route is configured by the simulator user or scenario,
 not learned from packets sent by another router.
 
-RIP, OSPF, BGP, EIGRP, and IS-IS are dynamic routing protocols. They own
+RIP, OSPF, BGP, and IS-IS are dynamic routing protocols. They own
 protocol state, parse protocol messages, run timers, and learn routes from
 neighbors.
 
@@ -139,7 +139,7 @@ Static routes must use `ROUTE_PROTO_STATIC` when installed into RouteTable.
 RouteTable gives static routes administrative distance `1`. That means:
 
 - direct routes beat static routes
-- static routes beat RIP, OSPF, BGP, EIGRP, and IS-IS for the same prefix
+- static routes beat RIP, OSPF, BGP, and IS-IS for the same prefix
 - metric is compared only between candidates with equal administrative distance
 
 The static-route module must not reimplement route selection.

@@ -207,7 +207,7 @@ It does not:
 | ARP request and pending queue | ARP / ARP cache modules |
 | Ethernet transmission | Ethernet module |
 | Static route configuration records | Static route module |
-| Routing protocol decisions | RIP/OSPF/BGP/EIGRP/IS-IS modules |
+| Routing protocol decisions | RIP/OSPF/BGP/IS-IS modules |
 
 Router should include `route_table.h`, not re-declare route structures.
 

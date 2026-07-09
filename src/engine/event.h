@@ -35,9 +35,6 @@ typedef enum {
     EVT_BGP_KEEPALIVE,
     EVT_BGP_HOLD,
     EVT_BGP_CONNECT_RETRY,
-    // EIGRP
-    EVT_EIGRP_HELLO,
-    EVT_EIGRP_HOLD,
     // IS-IS
     EVT_ISIS_HELLO,
     EVT_ISIS_HOLD,

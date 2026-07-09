@@ -55,9 +55,8 @@ above it in the table. Numbers are sequential build order. Coverage targets:
 | 22 | RIP                 | `protocols/rip.c/h`         | route_table, router, scheduler     | ✅ Done         | —                      |
 | 23 | OSPF                | `protocols/ospf.c/h`        | route_table, router, scheduler     | ⬜ Not started  | —                      |
 | 24 | BGP                 | `protocols/bgp.c/h`         | route_table, router, scheduler     | ⬜ Not started  | —                      |
-| 25 | EIGRP               | `protocols/eigrp.c/h`       | route_table, router, scheduler     | ⬜ Not started  | —                      |
-| 26 | IS-IS               | `protocols/isis.c/h`        | route_table, router, scheduler     | ⬜ Not started  | —                      |
-| 27 | NAT / PAT           | `protocols/nat.c/h`         | route_table, ip                    | ⬜ Not started  | —                      |
+| 25 | IS-IS               | `protocols/isis.c/h`        | route_table, router, scheduler     | ⬜ Not started  | —                      |
+| 26 | NAT / PAT           | `protocols/nat.c/h`         | route_table, ip                    | ⬜ Not started  | —                      |
 
 ---
 
@@ -65,9 +64,9 @@ above it in the table. Numbers are sequential build order. Coverage targets:
 
 | #  | Module              | File(s)                     | Depends On           | Status          | Tests (line / branch)  |
 |----|---------------------|-----------------------------|----------------------|-----------------|------------------------|
-| 28 | Topology renderer   | `display/topology.c/h`      | topology             | ⬜ Not started  | —                      |
-| 29 | Packet renderer     | `display/packet.c/h`        | packet, protocols    | ⬜ Not started  | —                      |
-| 30 | CLI / REPL          | `cli/cli.c/h`               | simulator, all       | ⬜ Not started  | —                      |
+| 27 | Topology renderer   | `display/topology.c/h`      | topology             | ⬜ Not started  | —                      |
+| 28 | Packet renderer     | `display/packet.c/h`        | packet, protocols    | ⬜ Not started  | —                      |
+| 29 | CLI / REPL          | `cli/cli.c/h`               | simulator, all       | ⬜ Not started  | —                      |
 
 ---
 
@@ -94,7 +93,7 @@ icmp / udp / tcp (ip)
 host (device, arp_cache, ip)
 route_table (device, ip)
 router (device, arp_cache, route_table, ip)
-rip / ospf / bgp / eigrp / isis (route_table, router, scheduler)
+rip / ospf / bgp / isis (route_table, router, scheduler)
 nat (route_table, ip)
 display / cli (everything)
 ```

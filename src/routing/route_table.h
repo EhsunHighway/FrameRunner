@@ -13,8 +13,7 @@
 #define ROUTE_PROTO_RIP             3
 #define ROUTE_PROTO_OSPF            4
 #define ROUTE_PROTO_BGP             5
-#define ROUTE_PROTO_EIGRP           6
-#define ROUTE_PROTO_ISIS            7
+#define ROUTE_PROTO_ISIS            6
 
 typedef struct RouteRibEntry {
     uint32_t   prefix;      /* host-order normalized prefix */
