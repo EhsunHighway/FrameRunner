@@ -181,6 +181,10 @@ microseconds.
 
 ### `NatEntry`
 
+`NatEntry` is one active address/port translation. It maps a private
+host-order IP/port pair to one public host-order IP/port pair for one transport
+protocol, and stores timeout information for garbage collection.
+
 ```c
 typedef struct NatEntry {
     uint32_t private_ip;
@@ -203,6 +207,10 @@ Ports are host order.
 first milestone.
 
 ### `NatState`
+
+`NatState` is the complete NAT/PAT table owned by one NAT instance. It stores
+active translations, the public address/interface used for rewriting, the next
+public port allocator, and borrowed Router/Simulator pointers.
 
 ```c
 typedef struct NatState {

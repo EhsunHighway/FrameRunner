@@ -117,17 +117,15 @@ OSPFv2 uses IPv4 protocol number `89` directly.
 That means the router needs a local IP protocol dispatch path for packets
 addressed to OSPF multicast/local control-plane destinations.
 
-Current-stack integration warning: the current Router spec is forwarding-first
-and does not yet define a Host-like `IpStack` for Router local control-plane
-protocols. OSPF receive requires one of these design choices before
-implementation is complete:
+The Router owns that dispatch path in `router->ip_stack`. OSPF registration
+stores `ospf_receive` as the handler for protocol `89` in that Router-owned
+IP stack, with the `OspfState *` as the handler context.
 
-- Router owns an `IpStack` and registers `IPPROTO_OSPF -> ospf_receive`, or
-- Router receive explicitly intercepts protocol `89` before forwarding, or
-- a shared control-plane dispatch mechanism is added for routers.
-
-Do not hide this integration point. OSPF cannot be correct if protocol `89`
-packets are only forwarded as transit traffic.
+Router receive decides local delivery before transit forwarding. If the packet
+is addressed to one of the Router's interface IPs or to OSPF link-local
+multicast such as `224.0.0.5`, Router calls `ip_receive` with
+`&router->ip_stack`. OSPF must not rely on forwarding lookup for protocol `89`
+packets.
 
 ### Multicast Addresses
 
@@ -232,6 +230,10 @@ until full database exchange is implemented.
 
 ### `OspfHeader`
 
+`OspfHeader` is the common OSPF packet header. Every OSPF packet starts with
+this structure, no matter whether the packet is Hello, LSU, DBD, LSR, or
+LSAck. The `type` field decides which body format follows the header.
+
 ```c
 typedef struct __attribute__((packed)) OspfHeader {
     uint8_t  version;
@@ -273,6 +275,10 @@ Wire layout:
 
 ### `OspfHello`
 
+`OspfHello` is the fixed body of an OSPF Hello packet. Hello packets discover
+neighbors and prove bidirectional communication. The fixed body is followed by
+zero or more neighbor router IDs.
+
 ```c
 typedef struct __attribute__((packed)) OspfHello {
     uint32_t network_mask;
@@ -309,6 +315,10 @@ Wire layout for the fixed Hello body:
 
 ### `OspfLsaLink`
 
+`OspfLsaLink` is one link record inside a router LSA. It describes one
+connection advertised by a router: the thing connected to, the link type, and
+the OSPF metric for reaching it.
+
 ```c
 typedef struct __attribute__((packed)) OspfLsaLink {
     uint32_t link_id;
@@ -319,13 +329,23 @@ typedef struct __attribute__((packed)) OspfLsaLink {
 } OspfLsaLink;
 ```
 
-Suggested link types:
+Required link-type constants:
 
 ```c
 #define OSPF_LINK_P2P      1
 #define OSPF_LINK_TRANSIT  2
 #define OSPF_LINK_STUB     3
 ```
+
+Meaning:
+
+- `OSPF_LINK_P2P`: point-to-point router-to-router link. The first SPF
+  implementation must process this type.
+- `OSPF_LINK_TRANSIT`: link to a broadcast/transit network. Store it if
+  received, but SPF may ignore it until network-LSA behavior is specified.
+- `OSPF_LINK_STUB`: link to a leaf network attached to the advertising router.
+  Store it if received, but route installation for stub networks is a later
+  milestone unless that behavior is specified in `ospf_run_spf`.
 
 ### Neighbor State
 
@@ -344,6 +364,10 @@ typedef enum OspfNbrState {
 
 ### `OspfNeighbor`
 
+`OspfNeighbor` is the per-neighbor state learned from Hello packets. It is not
+an LSA and it is not a route. It remembers which router was heard, on which
+interface, and when the last valid Hello arrived.
+
 ```c
 typedef struct OspfNeighbor {
     uint32_t      router_id;
@@ -360,6 +384,11 @@ Router ID and IP address are host order.
 `iface` is borrowed.
 
 ### `OspfLsaEntry`
+
+`OspfLsaEntry` is one LSDB record stored by the simulator. It is the in-memory
+form of a received or locally generated LSA. `adv_router` says which router
+advertised it, `seq_num` decides freshness, and `links[]` stores the topology
+links carried by this LSA.
 
 ```c
 typedef struct OspfLsaEntry {
@@ -378,16 +407,29 @@ The first milestone stores router LSAs with up to four links.
 
 ### Simplified LSU Body
 
+LSU means Link-State Update. An LSU packet carries one or more LSAs so routers
+can synchronize their LSDBs. In this simulator, an LSU body is a compact custom
+wire format for carrying router-LSA data; it is not the full RFC LSA encoding.
+
 The first milestone uses one simplified LSU body shape. It is not the full RFC
 LSA encoding. It is the simulator's compact wire representation for carrying
 one or more `OspfLsaEntry` records.
+
+`OspfLsuHeader` is the small LSU body header. It tells the receiver how many
+LSA records follow.
 
 ```c
 typedef struct __attribute__((packed)) OspfLsuHeader {
     uint16_t lsa_count;
     uint16_t reserved;
 } OspfLsuHeader;
+```
 
+`OspfLsaWire` is the fixed wire header for one LSA inside the simplified LSU
+body. It carries the LSA identity and freshness fields. The variable part of
+that LSA is the `OspfLsaLink` array that follows it.
+
+```c
 typedef struct __attribute__((packed)) OspfLsaWire {
     uint32_t lsa_id;
     uint32_t adv_router;
@@ -445,6 +487,10 @@ Parsing rule:
 
 ### `OspfIface`
 
+`OspfIface` is OSPF's per-enabled-interface record. It points to the borrowed
+simulator `Interface` and stores the OSPF cost used when this interface appears
+in LSAs or SPF calculations.
+
 ```c
 typedef struct OspfIface {
     Interface *iface;
@@ -457,6 +503,11 @@ OSPF needs per-interface cost. Do not store only `Interface *` if the algorithm
 needs a link metric.
 
 ### `OspfState`
+
+`OspfState` is the complete per-router OSPF control-plane state. One Router
+that runs OSPF owns one `OspfState` object through its caller/owner. This object
+groups neighbor state, LSDB state, enabled OSPF interfaces, and the borrowed
+Router/Simulator pointers needed for routing updates and timers.
 
 ```c
 typedef struct OspfState {
@@ -535,14 +586,15 @@ int handler(Interface *iface, Packet *pkt, void *ctx);
 The intended registration is:
 
 ```c
-ip_stack_register_protocol(router_control_stack,
+ip_stack_register_protocol(&router->ip_stack,
                            OSPF_PROTO_NUM,
                            ospf_receive,
                            ospf_state);
 ```
 
-The exact owner of `router_control_stack` must be resolved in Router/IP
-integration before OSPF receive is complete.
+The `router` used here is `state->router`. The registration writes into the
+Router-owned local IP stack, not into a Host IP stack and not into a global
+dispatch table.
 
 ## Function Behavior
 

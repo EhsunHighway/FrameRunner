@@ -252,6 +252,10 @@ IP calls `tcp_receive` only through the registered protocol handler for
 
 ### `TcpHeader`
 
+`TcpHeader` is the fixed TCP wire header placed after the IPv4 header. It
+identifies the two ports, sequence/acknowledgment numbers, control flags, and
+receive window for one TCP segment.
+
 ```c
 typedef struct __attribute__((packed)) TcpHeader {
     uint16_t src_port;
@@ -314,6 +318,10 @@ options.
 
 ### `TcpState`
 
+`TcpState` is the simplified TCP connection state machine value stored in each
+TCB. It tracks where one connection is in the listen, open, data-transfer, and
+close paths.
+
 ```c
 typedef enum TcpState {
     TCP_CLOSED,
@@ -348,6 +356,10 @@ Both callbacks may be `NULL`.
 
 ### `TcpSegment`
 
+`TcpSegment` is one packet clone waiting for acknowledgment in a TCB send
+queue. TCP uses it to retransmit data or control segments if the peer does not
+acknowledge them in time.
+
 ```c
 typedef struct TcpSegment {
     Packet   *pkt;
@@ -365,6 +377,10 @@ given to IP.
 
 ### `TcbSendQueue`
 
+`TcbSendQueue` is the fixed-size retransmission queue inside one TCB. It stores
+the in-flight `TcpSegment` records that have been sent but not fully
+acknowledged.
+
 ```c
 typedef struct TcbSendQueue {
     TcpSegment entries[TCP_MAX_INFLIGHT];
@@ -375,6 +391,10 @@ typedef struct TcbSendQueue {
 Current maximum count is `1`.
 
 ### `Tcb`
+
+TCB means Transmission Control Block. A `Tcb` is one TCP connection or listening
+endpoint in the simulator. It stores the four-tuple, TCP state, send/receive
+sequence numbers, retransmission queue, callbacks, and callback context.
 
 ```c
 struct Tcb {
@@ -405,6 +425,9 @@ IP addresses and ports in TCBs are host order.
 
 ### `TcpTable`
 
+`TcpTable` is the fixed-capacity collection of TCB slots owned by one host or
+router-side TCP user. It is TCP's connection table.
+
 ```c
 typedef struct TcpTable {
     Tcb tcbs[TCP_MAX_CONNS];
@@ -415,6 +438,10 @@ typedef struct TcpTable {
 `count` is the number of valid TCB slots.
 
 ### `TcpContext`
+
+`TcpContext` is the small dispatch context registered with IP for protocol `6`.
+It lets `tcp_receive` find the simulator and the TCP table that owns the
+connection state.
 
 ```c
 typedef struct TcpContext {

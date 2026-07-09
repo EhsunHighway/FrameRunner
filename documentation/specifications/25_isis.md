@@ -199,6 +199,10 @@ microseconds.
 
 ### `IsisHeader`
 
+`IsisHeader` is the simplified common header at the start of every IS-IS PDU in
+this simulator. The `pdu_type` field decides whether the fixed body is IIH,
+LSP, CSNP, or PSNP.
+
 ```c
 typedef struct __attribute__((packed)) IsisHeader {
     uint8_t discr;
@@ -232,6 +236,10 @@ Wire layout:
 
 ### `IsisIih`
 
+IIH means IS-IS Hello. `IsisIih` is the fixed body of a simplified IS-IS Hello
+PDU. It advertises the sender's system ID and hold time so neighbors can be
+discovered and aged.
+
 ```c
 typedef struct __attribute__((packed)) IsisIih {
     uint8_t  circuit_type;
@@ -245,7 +253,7 @@ typedef struct __attribute__((packed)) IsisIih {
 
 The first milestone uses Level-1 circuit type.
 
-TLVs may follow the fixed IIH body.
+TLV means Type-Length-Value. TLVs may follow the fixed IIH body.
 
 Wire layout for the fixed IIH body:
 
@@ -265,6 +273,10 @@ Wire layout for the fixed IIH body:
 ```
 
 ### `IsisLspHeader`
+
+LSP means Link-State PDU. `IsisLspHeader` is the fixed header for one
+link-state advertisement in this simulator's simplified IS-IS model. The
+variable link information follows as TLVs or simplified neighbor records.
 
 ```c
 typedef struct __attribute__((packed)) IsisLspHeader {
@@ -304,6 +316,10 @@ Wire layout:
 
 ### `IsisIface`
 
+`IsisIface` is IS-IS's per-enabled-interface record. It stores the borrowed
+simulator interface pointer and the IS-IS metric used when generating LSPs or
+running SPF.
+
 ```c
 typedef struct IsisIface {
     Interface *iface;
@@ -315,6 +331,10 @@ typedef struct IsisIface {
 IS-IS needs per-interface metric.
 
 ### `IsisNeighbor`
+
+`IsisNeighbor` is one neighbor learned from IIH packets. It stores the
+neighbor's system ID, the interface where it was heard, and the simulated time
+when the hold timer expires.
 
 ```c
 typedef struct IsisNeighbor {
@@ -328,6 +348,10 @@ typedef struct IsisNeighbor {
 `iface` is borrowed.
 
 ### `IsisLspEntry`
+
+`IsisLspEntry` is one LSDB record stored by IS-IS. It is the in-memory form of a
+received or locally generated LSP, with enough simplified neighbor/cost data for
+the first SPF implementation.
 
 ```c
 typedef struct IsisLspEntry {
@@ -345,6 +369,10 @@ typedef struct IsisLspEntry {
 This simplified LSDB stores neighbor system IDs and metrics directly.
 
 ### `IsisState`
+
+`IsisState` is the complete per-router IS-IS control-plane state. It owns the
+neighbor table, LSDB, enabled-interface records, and borrowed Router/Simulator
+pointers used for timers and route installation.
 
 ```c
 typedef struct IsisState {

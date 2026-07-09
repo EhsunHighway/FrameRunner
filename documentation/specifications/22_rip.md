@@ -297,6 +297,10 @@ microseconds.
 
 ### `RipHeader`
 
+`RipHeader` is the fixed 4-byte header at the start of every RIP payload. It
+tells the receiver whether the message is a request or a response and which RIP
+version the payload uses.
+
 ```c
 typedef struct __attribute__((packed)) RipHeader {
     uint8_t  command;
@@ -315,6 +319,10 @@ offset  size  field
 ```
 
 ### `RipEntry`
+
+`RipEntry` is one route record inside a RIP packet. It is wire data only. The
+receive path reads it, converts fields to host order, and then updates a
+separate `RipRouteInfo` object in the RIP database.
 
 ```c
 typedef struct __attribute__((packed)) RipEntry {
@@ -343,6 +351,11 @@ All multi-byte RIP fields are network byte order on the wire.
 
 ### `RipRouteInfo`
 
+`RipRouteInfo` is one route stored in RIP's own database. It is not packet
+memory and it is not a RouteTable RIB entry. It stores RIP-specific state such
+as learned interface, timeout timestamp, garbage-collection state, and current
+metric.
+
 ```c
 typedef struct RipRouteInfo {
     uint32_t   prefix;
@@ -357,7 +370,7 @@ typedef struct RipRouteInfo {
 } RipRouteInfo;
 ```
 
-Suggested states:
+Required RIP route states:
 
 ```c
 #define RIP_ROUTE_ACTIVE  1
@@ -369,6 +382,10 @@ Suggested states:
 `learned_on` is borrowed. RIP does not free interfaces.
 
 ### `RipState`
+
+`RipState` is the complete per-router RIP control-plane state. It owns the RIP
+database and the list of interfaces enabled for RIP, and it borrows the Router,
+Simulator, and UDP state needed to install routes and send/receive RIP packets.
 
 ```c
 typedef struct RipState {

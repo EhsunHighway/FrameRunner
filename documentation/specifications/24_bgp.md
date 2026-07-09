@@ -211,6 +211,10 @@ Use microseconds for internal timers because `Scheduler.now` and
 
 ### `BgpHeader`
 
+`BgpHeader` is the fixed header at the start of every BGP message in the TCP
+byte stream. It tells the receiver where this BGP message ends and which BGP
+message body follows.
+
 ```c
 typedef struct __attribute__((packed)) BgpHeader {
     uint8_t  marker[16];
@@ -242,6 +246,10 @@ Wire layout:
 ```
 
 ### `BgpOpen`
+
+`BgpOpen` is the fixed body of a BGP OPEN message. A peer sends it after the TCP
+connection is established so both sides can agree on BGP version, AS number,
+hold time, and BGP identifier.
 
 ```c
 typedef struct __attribute__((packed)) BgpOpen {
@@ -281,6 +289,10 @@ offset  size  field
 
 ### Session State
 
+`BgpSessionState` is the simplified BGP finite-state machine state for one TCP
+peer session. It tracks where the peer is between initial configuration and an
+established BGP session.
+
 ```c
 typedef enum BgpSessionState {
     BGP_IDLE,
@@ -293,6 +305,10 @@ typedef enum BgpSessionState {
 ```
 
 ### `BgpPeer`
+
+`BgpPeer` is one configured or active BGP neighbor. It stores the peer's IP/AS
+identity, the TCP control block borrowed from TCP, session timers, and the
+current BGP session state.
 
 ```c
 typedef struct BgpPeer {
@@ -316,6 +332,10 @@ IP addresses are host order.
 
 ### `BgpPrefix`
 
+`BgpPrefix` is one route learned from one BGP peer and stored in Adj-RIB-In. It
+keeps the prefix, next hop, peer index, and simplified path attributes used by
+BGP best-path selection.
+
 ```c
 typedef struct BgpPrefix {
     uint32_t prefix;
@@ -335,6 +355,10 @@ This is an Adj-RIB-In route learned from one peer.
 `prefix` and `next_hop` are host order.
 
 ### `BgpStateBlock`
+
+`BgpStateBlock` is the complete per-router BGP control-plane state. It owns the
+peer table and Adj-RIB-In table, and it borrows the Router, Simulator, and TCP
+table needed for sessions and route installation.
 
 ```c
 typedef struct BgpStateBlock {

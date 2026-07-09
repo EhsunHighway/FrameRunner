@@ -38,6 +38,21 @@ Good examples:
 
 Avoid vague concept sections that only restate function names.
 
+### Data Model Descriptions
+
+Every public struct, enum, and important internal record in the Data Model
+section needs a short description before the C definition.
+
+That description must answer:
+
+- what the object represents
+- who owns it or whether it is wire data
+- how it relates to nearby objects
+
+Expand acronyms before using them as section labels or struct names. For
+example, write "LSU means Link-State Update" before explaining an LSU body, and
+write "TCB means Transmission Control Block" before describing `Tcb`.
+
 ### Wire And Header Formats
 
 When a module defines bytes on the wire, the spec must show the packet or

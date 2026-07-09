@@ -183,6 +183,9 @@ and provide callbacks.
 
 ### `UdpHeader`
 
+`UdpHeader` is the fixed UDP wire header placed after the IPv4 header. It names
+the source/destination ports and the total UDP datagram length.
+
 ```c
 typedef struct __attribute__((packed)) UdpHeader {
     uint16_t src_port;
@@ -221,6 +224,10 @@ All UDP header fields are network byte order.
 
 ### `UdpSocket`
 
+`UdpSocket` is one bound UDP port in this simulator. It does not represent a
+connected stream; it stores the receive callback and context for datagrams that
+arrive on one local port.
+
 ```c
 struct UdpSocket {
     uint16_t         port;
@@ -241,6 +248,9 @@ Field meanings:
 
 ### `UdpState`
 
+`UdpState` is the fixed-capacity table of bound UDP sockets owned by a Host or
+another module that exposes UDP endpoints.
+
 ```c
 typedef struct UdpState {
     UdpSocket sockets[UDP_MAX_SOCKETS];
@@ -253,6 +263,9 @@ typedef struct UdpState {
 Slots are not compacted. All operations scan all 32 slots.
 
 ### `UdpContext`
+
+`UdpContext` is the small dispatch context registered with IP for protocol
+`17`. It lets `udp_receive` find the simulator and the UDP socket table.
 
 ```c
 typedef struct UdpContext {
