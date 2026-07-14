@@ -220,18 +220,27 @@ int       topology_link_count(const Topology *topo);
 
 ## Function Behavior
 
-Function behavior is an implementation contract. For simple functions, the
-`Implementation order` list is written in execution order unless the text
-explicitly says order does not matter. For non-trivial functions, especially
-functions with ownership transfer, queueing, lookup, selection, state-machine
-transitions, or packet forwarding, split the section into behavior summary,
-implementation order, and postconditions so the coder does not have to guess.
-Do not mix final-state facts into `Implementation order`; put them under
-`Postconditions` unless the implementation must check that fact at that exact
-point in control flow.
-
-
 ### `topology_create`
+
+Purpose:
+
+Allocate and initialize a new topology object.
+
+Implementation task:
+
+Implement `topology_create` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -256,6 +265,26 @@ Unused pointer slots are not initialized by the current implementation.
 
 ### `topology_free`
 
+Purpose:
+
+Release the devices, links, and storage owned by the topology.
+
+Implementation task:
+
+Implement `topology_free` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `topo == NULL`, return immediately.
@@ -268,6 +297,26 @@ Implementation order:
 The current free order is devices first, then links.
 
 ### `topology_add_device`
+
+Purpose:
+
+Add one device to the topology.
+
+Implementation task:
+
+Implement `topology_add_device` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -283,6 +332,26 @@ The current implementation does not reject duplicate device names.
 
 ### `topology_add_link`
 
+Purpose:
+
+Add one link to the topology.
+
+Implementation task:
+
+Implement `topology_add_link` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `topo == NULL`, return `-1`.
@@ -297,6 +366,26 @@ The current implementation does not reject duplicate links.
 
 ### `topology_find_device_by_name`
 
+Purpose:
+
+Find a topology device with the supplied name.
+
+Implementation task:
+
+Implement `topology_find_device_by_name` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `topo == NULL`, return `NULL`.
@@ -306,6 +395,26 @@ Implementation order:
 - If no match exists, return `NULL`.
 
 ### `topology_find_device_by_ip`
+
+Purpose:
+
+Find the topology device that owns the supplied IPv4 address.
+
+Implementation task:
+
+Implement `topology_find_device_by_ip` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -318,6 +427,26 @@ Implementation order:
 The comparison uses the stored integer IP value exactly.
 
 ### `topology_get_link_between`
+
+Purpose:
+
+Find the topology link connecting the two supplied devices.
+
+Implementation task:
+
+Implement `topology_get_link_between` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -334,12 +463,52 @@ The comparison uses interface pointer identity.
 
 ### `topology_device_count`
 
+Purpose:
+
+Return the number of devices currently stored in the topology.
+
+Implementation task:
+
+Implement `topology_device_count` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `topo == NULL`, return `0`.
 - Otherwise return `topo->dev_count`.
 
 ### `topology_link_count`
+
+Purpose:
+
+Return the number of links currently stored in the topology.
+
+Implementation task:
+
+Implement `topology_link_count` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 

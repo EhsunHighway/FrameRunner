@@ -1,16 +1,7 @@
 #include "static_route.h"
 #include "route_table.h"
+#include "../common/ip_utils.h"
 #include <string.h>
-
-static uint32_t static_route_mask(uint8_t prefix_len) {
-    if (prefix_len == 0) {
-        return 0;
-    } else if (prefix_len >= 32) {
-        return 0xFFFFFFFFu;
-    } else {
-        return 0xFFFFFFFFu << (32 - prefix_len);
-    }
-}
 
 void static_route_init(StaticRouteTable *table) {
     if (!table) {
@@ -31,7 +22,7 @@ int  static_route_add(StaticRouteTable *table,
         return -1;
     }
 
-    uint32_t normalized_prefix = prefix & static_route_mask(prefix_len);
+    uint32_t normalized_prefix = prefix & ipv4_prefix_mask(prefix_len);
 
     for (int i = 0; i < STATIC_ROUTE_MAX_ROUTES; i++) {
         StaticRouteEntry *entry = &table->routes[i];
@@ -94,7 +85,7 @@ int  static_route_delete(StaticRouteTable *table,
         return -1;
     }
 
-    uint32_t normalized_prefix = prefix & static_route_mask(prefix_len);
+    uint32_t normalized_prefix = prefix & ipv4_prefix_mask(prefix_len);
 
     for (int i = 0; i < STATIC_ROUTE_MAX_ROUTES; i++) {
         StaticRouteEntry *entry = &table->routes[i];

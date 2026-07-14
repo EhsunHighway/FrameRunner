@@ -11,18 +11,7 @@ static int icmp_send_error(Simulator *sim,
         return -1;
     }
 
-    if (!orig_pkt->head || !orig_pkt->data) {
-        iface->tx_errors++;
-        return -1;
-    }
-
-    if (orig_pkt->data < orig_pkt->head + IP_HDR_LEN) {
-        iface->tx_errors++;
-        return -1;
-    }
-
-    uint8_t *end = orig_pkt->head + PKT_HEADROOM + orig_pkt->capacity;
-    if (orig_pkt->data >= end || orig_pkt->len > (size_t)(end - orig_pkt->data)) {
+    if (packet_validate_view(orig_pkt, IP_HDR_LEN, 0) != 0) {
         iface->tx_errors++;
         return -1;
     }
@@ -91,27 +80,7 @@ int        icmp_receive(Interface *iface,
         iface->rx_errors++;
         return -1;
     }
-    if (pkt->len < ICMP_HDR_LEN) {
-        iface->rx_errors++;
-        packet_free(pkt);
-        return -1;
-    }
-
-    if (!pkt->head || !pkt->data) {
-        iface->rx_errors++;
-        packet_free(pkt);
-        return -1;
-    }
-
-    uint8_t *end       = pkt->head + PKT_HEADROOM + pkt->capacity;
-    if (pkt->data < pkt->head + IP_HDR_LEN || pkt->data >= end) {
-        iface->rx_errors++;
-        packet_free(pkt);
-        return -1;
-    }
-
-    size_t   remaining = (size_t)(end - pkt->data);
-    if (pkt->len > remaining) {
+    if (packet_validate_view(pkt, IP_HDR_LEN, ICMP_HDR_LEN) != 0) {
         iface->rx_errors++;
         packet_free(pkt);
         return -1;
@@ -211,33 +180,7 @@ int        icmp_send_echo_reply(Simulator *sim,
         return -1;
     }
 
-    if (req_pkt->len < ICMP_HDR_LEN) {
-        iface->tx_errors++;
-        packet_free(req_pkt);
-        return -1;
-    }
-
-    if (!req_pkt->head || !req_pkt->data) {
-        iface->tx_errors++;
-        packet_free(req_pkt);
-        return -1;
-    }
-
-    if (req_pkt->data < req_pkt->head + IP_HDR_LEN) {
-        iface->tx_errors++;
-        packet_free(req_pkt);
-        return -1;
-    }
-
-    uint8_t *end = req_pkt->head + PKT_HEADROOM + req_pkt->capacity;
-    if (req_pkt->data >= end) {
-        iface->tx_errors++;
-        packet_free(req_pkt);
-        return -1;
-    }
-
-    size_t remaining = (size_t)(end - req_pkt->data);
-    if (req_pkt->len > remaining) {
+    if (packet_validate_view(req_pkt, IP_HDR_LEN, ICMP_HDR_LEN) != 0) {
         iface->tx_errors++;
         packet_free(req_pkt);
         return -1;

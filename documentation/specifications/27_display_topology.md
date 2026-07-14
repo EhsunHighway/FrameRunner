@@ -217,18 +217,27 @@ Printing functions treat `FILE *out == NULL` as invalid input.
 
 ## Function Behavior
 
-Function behavior is an implementation contract. For simple functions, the
-`Implementation order` list is written in execution order unless the text
-explicitly says order does not matter. For non-trivial functions, especially
-functions with ownership transfer, queueing, lookup, selection, state-machine
-transitions, or packet forwarding, split the section into behavior summary,
-implementation order, and postconditions so the coder does not have to guess.
-Do not mix final-state facts into `Implementation order`; put them under
-`Postconditions` unless the implementation must check that fact at that exact
-point in control flow.
-
-
 ### `topology_view_sprint_ip`
+
+Purpose:
+
+Format one host-order IPv4 address into the caller-provided text buffer.
+
+Implementation task:
+
+Implement `topology_view_sprint_ip` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -243,6 +252,26 @@ For an interface IP, callers pass `iface->ip_addr`, which is network order.
 
 ### `topology_view_sprint_mac`
 
+Purpose:
+
+Format one MAC address into the caller-provided text buffer.
+
+Implementation task:
+
+Implement `topology_view_sprint_mac` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `mac == NULL || buf == NULL`, return `-1`.
@@ -252,6 +281,26 @@ Implementation order:
 - Return `0`.
 
 ### `topology_view_print_iface`
+
+Purpose:
+
+Print the requested iface representation.
+
+Implementation task:
+
+Implement `topology_view_print_iface` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -267,6 +316,26 @@ Implementation order:
 
 ### `topology_view_print_device`
 
+Purpose:
+
+Print the requested device representation.
+
+Implementation task:
+
+Implement `topology_view_print_device` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `dev == NULL || out == NULL`, return `-1`.
@@ -280,6 +349,26 @@ Current type behavior: print `[Device]`, not `[Host]`, `[Router]`, or
 `[Switch]`.
 
 ### `topology_view_print_links`
+
+Purpose:
+
+Print the requested links representation.
+
+Implementation task:
+
+Implement `topology_view_print_links` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -298,6 +387,26 @@ Endpoint device name comes from `link->end_a->device->name` and
 `link->end_b->device->name` when available.
 
 ### `topology_view_print`
+
+Purpose:
+
+Print the current topology using the selected topology-view mode.
+
+Implementation task:
+
+Implement `topology_view_print` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 

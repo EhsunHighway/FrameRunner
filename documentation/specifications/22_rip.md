@@ -3,7 +3,7 @@
 **Files:** `src/protocols/rip.c`, `src/protocols/rip.h`
 **Status:** In implementation
 **Depends on:** `router`, `route_table`, `udp`, `ip`, `packet`, `interface`,
-`scheduler`, `event`, `simulator`, `byte_order`
+`scheduler`, `event`, `simulator`, `byte_order`, `ip_utils`
 
 ## Concepts First
 
@@ -461,15 +461,6 @@ must still produce the same result: UDP port 520 delivers payloads to
 
 ## Function Behavior
 
-Function behavior is an implementation contract. For simple functions, the
-`Implementation order` list is written in execution order unless the text
-explicitly says order does not matter. For non-trivial functions, especially
-functions with ownership transfer, queueing, lookup, selection, state-machine
-transitions, or packet forwarding, split the section into concept, behavior
-summary, implementation order, and postconditions so the coder does not have
-to guess.
-
-
 ### `rip_init`
 
 Behavior summary:
@@ -481,6 +472,26 @@ yet, the owner pointers are stored, UDP port `520` is connected to
 when a scheduler exists. The first timeout scan and first garbage-collection
 scan are also scheduled when a scheduler exists, so learned routes can expire
 without another module having to create those events.
+
+Purpose:
+
+Initialize the supplied rip state to its documented empty or default state.
+
+Implementation task:
+
+Implement `rip_init` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -525,6 +536,26 @@ free interfaces.
 Calling `rip_enable_iface` twice with the same interface is harmless. The
 second call should return success without changing `iface_count`.
 
+Purpose:
+
+Enable one interface in the RIP state.
+
+Implementation task:
+
+Implement `rip_enable_iface` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `state == NULL || iface == NULL`, return `-1`.
@@ -557,6 +588,26 @@ find or create a `RipRouteInfo` entry in `state->db`. The RIP DB entry is the
 object that stores `learned_on`, `last_update`, `state`, `valid`, metric, and
 next-hop state.
 
+Purpose:
+
+Validate and process one RIP response delivered by UDP.
+
+Implementation task:
+
+Implement `rip_receive` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `payload == NULL`, return.
@@ -566,7 +617,8 @@ Implementation order:
 - If `state->router == NULL`, free payload and return.
 - If `state->sim == NULL` or `state->sim->sched == NULL`, free payload and
   return.
-- If `payload->len < RIP_HDR_LEN`, free payload and return.
+- Call `packet_validate_view(payload, 0, RIP_HDR_LEN)`. If it returns `-1`,
+  free payload and return without reading RIP bytes.
 - If `(payload->len - RIP_HDR_LEN) % RIP_ENTRY_LEN != 0`, free payload and
   return.
 - Count the complete RIP route entries after the header.
@@ -663,6 +715,26 @@ RIP packet entries are wire records. The send path reads each selected
 payload buffer. It must not expose `RipRouteInfo` memory directly as packet
 bytes.
 
+Purpose:
+
+Construct and send the requested update.
+
+Implementation task:
+
+Implement `rip_send_update` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `state == NULL || out_iface == NULL`, return `-1`.
@@ -745,6 +817,26 @@ each enabled interface and then schedules the next update timer. It does not
 decide whether routes have expired; timeout and garbage collection own route
 aging.
 
+Purpose:
+
+Update handler from the supplied input and current state.
+
+Implementation task:
+
+Implement `rip_update_handler` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If event/context is missing, return.
@@ -766,6 +858,26 @@ the `ROUTE_PROTO_RIP` route from the Router route table.
 The RIP DB entry is not deleted yet. It is moved to `RIP_ROUTE_GC` with metric
 `RIP_INFINITY`, so the later garbage-collection phase can remove it after the
 GC delay.
+
+Purpose:
+
+Process the scheduled expiration of one RIP route timeout.
+
+Implementation task:
+
+Implement `rip_timeout_handler` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -800,6 +912,26 @@ touches entries that are already valid and in `RIP_ROUTE_GC`.
 The `learned_on` pointer is borrowed. Garbage collection must not free that
 interface. It only clears the pointer stored in the RIP DB entry before
 invalidating the entry.
+
+Purpose:
+
+Process the scheduled garbage-collection deadline for one poisoned RIP route.
+
+Implementation task:
+
+Implement `rip_gc_handler` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 

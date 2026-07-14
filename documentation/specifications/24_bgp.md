@@ -440,17 +440,6 @@ may call a separate listen helper in the implementation.
 
 ## Function Behavior
 
-Function behavior is an implementation contract. For simple functions, the
-`Implementation order` list is written in execution order unless the text
-explicitly says order does not matter. For non-trivial functions, especially
-functions with ownership transfer, queueing, lookup, selection, state-machine
-transitions, or packet forwarding, split the section into behavior summary,
-implementation order, and postconditions so the coder does not have to guess.
-Do not mix final-state facts into `Implementation order`; put them under
-`Postconditions` unless the implementation must check that fact at that exact
-point in control flow.
-
-
 ### `bgp_init`
 
 Behavior summary:
@@ -458,6 +447,26 @@ Behavior summary:
 `bgp_init` prepares caller-owned BGP state for one router/local AS and creates
 the TCP listening side when the required TCP state and listening address are
 available.
+
+Purpose:
+
+Initialize the supplied bgp state to its documented empty or default state.
+
+Implementation task:
+
+Implement `bgp_init` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -484,6 +493,26 @@ If TCP listen setup fails, the BGP state remains initialized but cannot accept
 incoming BGP sessions until the owner fixes or retries TCP setup.
 
 ### `bgp_add_peer`
+
+Purpose:
+
+Add one configured peer to the BGP state.
+
+Implementation task:
+
+Implement `bgp_add_peer` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -513,6 +542,26 @@ Implementation order:
 
 ### `bgp_tcp_connected`
 
+Purpose:
+
+Advance a BGP peer after its underlying TCP connection becomes established.
+
+Implementation task:
+
+Implement `bgp_tcp_connected` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `tcb == NULL || ctx == NULL`, return.
@@ -526,6 +575,26 @@ This is the TCP-established hook. Do not overload `bgp_receive` with
 
 ### `bgp_receive`
 
+Purpose:
+
+Validate and process a BGP message delivered by TCP.
+
+Implementation task:
+
+Implement `bgp_receive` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `payload == NULL`, return.
@@ -533,6 +602,9 @@ Implementation order:
 - Cast context to `BgpStateBlock *`.
 - Find peer by TCB.
 - If no peer matches, free payload and return.
+- Call `packet_validate_view(payload, 0, BGP_MIN_MSG_LEN)`. If it returns
+  `-1`, free payload and return without reading BGP bytes. TCP has already
+  stripped its header, and BGP does not recover it from headroom.
 - A TCP payload may contain one BGP message or partial stream data depending on
   future TCP stream behavior. Current TCP delivers one packet payload at a time,
   so the first milestone may require one complete BGP message per payload.
@@ -552,6 +624,26 @@ Implementation order:
 
 ### `bgp_send_open`
 
+Purpose:
+
+Construct and send the requested open.
+
+Implementation task:
+
+Implement `bgp_send_open` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If state or peer is NULL, return `-1`.
@@ -570,6 +662,26 @@ Implementation order:
 
 ### `bgp_send_keepalive`
 
+Purpose:
+
+Construct and send the requested keepalive.
+
+Implementation task:
+
+Implement `bgp_send_keepalive` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If state or peer is NULL, return `-1`.
@@ -581,6 +693,26 @@ Implementation order:
 - Return `0`.
 
 ### `bgp_send_update`
+
+Purpose:
+
+Construct and send the requested update.
+
+Implementation task:
+
+Implement `bgp_send_update` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -596,6 +728,26 @@ Implementation order:
 - Return `0` if all sends succeed, otherwise `-1`.
 
 ### `bgp_select_best`
+
+Purpose:
+
+Select the best valid BGP path using the documented tie-break sequence.
+
+Implementation task:
+
+Implement `bgp_select_best` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 

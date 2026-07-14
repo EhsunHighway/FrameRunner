@@ -210,18 +210,27 @@ void        mac_table_flush_port(MacTable *table, Interface *port);
 
 ## Function Behavior
 
-Function behavior is an implementation contract. For simple functions, the
-`Implementation order` list is written in execution order unless the text
-explicitly says order does not matter. For non-trivial functions, especially
-functions with ownership transfer, queueing, lookup, selection, state-machine
-transitions, or packet forwarding, split the section into behavior summary,
-implementation order, and postconditions so the coder does not have to guess.
-Do not mix final-state facts into `Implementation order`; put them under
-`Postconditions` unless the implementation must check that fact at that exact
-point in control flow.
-
-
 ### `mac_table_init`
+
+Purpose:
+
+Initialize the MAC learning table to an empty usable state.
+
+Implementation task:
+
+Implement `mac_table_init` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -233,6 +242,26 @@ Implementation order:
 Current implementation uses `memset(table, 0, sizeof(MacTable))`.
 
 ### `mac_table_learn`
+
+Purpose:
+
+Learn or refresh one source-MAC-to-interface mapping.
+
+Implementation task:
+
+Implement `mac_table_learn` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -257,6 +286,26 @@ Implementation order:
 
 ### `mac_table_lookup`
 
+Purpose:
+
+Find the egress interface learned for the supplied destination MAC address.
+
+Implementation task:
+
+Implement `mac_table_lookup` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `table == NULL`, return `NULL`.
@@ -268,6 +317,26 @@ Implementation order:
 The returned `Interface *` is borrowed from the table entry.
 
 ### `mac_table_age`
+
+Purpose:
+
+Invalidate MAC-table entries whose age exceeds the configured lifetime.
+
+Implementation task:
+
+Implement `mac_table_age` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -289,6 +358,26 @@ The current implementation does not guard against unsigned timestamp
 wraparound.
 
 ### `mac_table_flush_port`
+
+Purpose:
+
+Remove the matching port entries.
+
+Implementation task:
+
+Implement `mac_table_flush_port` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 

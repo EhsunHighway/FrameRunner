@@ -305,17 +305,6 @@ own send APIs.
 
 ## Function Behavior
 
-Function behavior is an implementation contract. For simple functions, the
-`Implementation order` list is written in execution order unless the text
-explicitly says order does not matter. For non-trivial functions, especially
-functions with ownership transfer, queueing, lookup, selection, state-machine
-transitions, or packet forwarding, split the section into behavior summary,
-implementation order, and postconditions so the coder does not have to guess.
-Do not mix final-state facts into `Implementation order`; put them under
-`Postconditions` unless the implementation must check that fact at that exact
-point in control flow.
-
-
 ### `host_create`
 
 Behavior summary:
@@ -324,6 +313,26 @@ Behavior summary:
 registers IP protocol handlers, and returns a ready Host object. If any required
 allocation or registration fails, it releases everything allocated so far and
 returns `NULL`.
+
+Purpose:
+
+Allocate and initialize a new host object.
+
+Implementation task:
+
+Implement `host_create` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -394,6 +403,26 @@ only Host-owned state that has actually been created.
 
 ### `host_free`
 
+Purpose:
+
+Release the interfaces and protocol state owned by the host.
+
+Implementation task:
+
+Implement `host_free` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `host == NULL`, return.
@@ -411,6 +440,26 @@ Implementation order:
 Cleanup must match the pointer storage model in `host.h`.
 
 ### `host_add_interface`
+
+Purpose:
+
+Attach one interface to the host and bind its protocol state.
+
+Implementation task:
+
+Implement `host_add_interface` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -430,6 +479,26 @@ Current implementation does not roll back `device_add_interface` if
 fails only on NULL input, and Host checks those inputs first.
 
 ### `host_receive`
+
+Purpose:
+
+Process one packet received by a host interface.
+
+Implementation task:
+
+Implement `host_receive` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -451,6 +520,26 @@ with this Host's `ip_stack` as the opaque context. Host does not parse IPv4 or
 upper-layer protocol headers in this function.
 
 ### `host_send_ip`
+
+Purpose:
+
+Construct and send the requested ip.
+
+Implementation task:
+
+Implement `host_send_ip` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 

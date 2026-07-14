@@ -346,17 +346,6 @@ directly.
 
 ## Function Behavior
 
-Function behavior is an implementation contract. For simple functions, the
-`Implementation order` list is written in execution order unless the text
-explicitly says order does not matter. For non-trivial functions, especially
-functions with ownership transfer, queueing, lookup, selection, state-machine
-transitions, or packet forwarding, split the section into behavior summary,
-implementation order, and postconditions so the coder does not have to guess.
-Do not mix final-state facts into `Implementation order`; put them under
-`Postconditions` unless the implementation must check that fact at that exact
-point in control flow.
-
-
 ### `router_create`
 
 Behavior summary:
@@ -364,6 +353,26 @@ Behavior summary:
 `router_create` allocates one Router, initializes embedded forwarding state, and
 returns a Router ready to accept interfaces and routes. If allocation fails, it
 releases anything already allocated and returns `NULL`.
+
+Purpose:
+
+Allocate and initialize a new router object.
+
+Implementation task:
+
+Implement `router_create` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -398,6 +407,26 @@ has actually been created.
 
 ### `router_free`
 
+Purpose:
+
+Release the resources owned by the supplied Router.
+
+Implementation task:
+
+Implement `router_free` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `router == NULL`, return.
@@ -410,6 +439,26 @@ Do not free `router->arp_cache` or `router->route_tbl` separately because they
 are embedded.
 
 ### `router_add_interface`
+
+Purpose:
+
+Attach one interface to the router.
+
+Implementation task:
+
+Implement `router_add_interface` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -463,6 +512,26 @@ Successful `router_add_interface` must leave:
 
 ### `router_add_route`
 
+Purpose:
+
+Add a route to the router’s route table through the router-level API.
+
+Implementation task:
+
+Implement `router_add_route` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `router == NULL`, return `-1`.
@@ -484,6 +553,26 @@ All IP values passed to route table are host order.
 
 ### `router_del_route`
 
+Purpose:
+
+Delete the matching route through the router-level API.
+
+Implementation task:
+
+Implement `router_del_route` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `router == NULL`, return `-1`.
@@ -497,14 +586,35 @@ route_table_delete(&router->route_tbl, prefix, prefix_len, proto);
 
 ### `router_receive`
 
+Purpose:
+
+Process a packet received by one of the router’s interfaces.
+
+Implementation task:
+
+Implement `router_receive` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `router == NULL || in_iface == NULL || pkt == NULL`, return `-1`.
 - If `router->sim == NULL`, free `pkt` and return `-1`.
-- If `pkt->data == NULL || pkt->len < IP_HDR_LEN`, free `pkt`, increment
-  `in_iface->rx_errors`, and return `-1`.
-- Validate the IPv4 header with `ip_validate_header(pkt)` before changing TTL.
-- If validation fails, free `pkt`, increment `rx_errors`, return `-1`.
+- Call `ip_validate_header(pkt)` before reading the IPv4 header or changing
+  TTL. That helper performs `packet_validate_view(pkt, 0, IP_HDR_LEN)`; do not
+  repeat the packet-layout check in `router_receive`.
+- If IP validation fails, free `pkt`, increment `in_iface->rx_errors`, and
+  return `-1`.
 - Read the IPv4 header at `pkt->data`.
 - Convert destination IP from network order to host order.
 - Decide whether this packet is local/control-plane:

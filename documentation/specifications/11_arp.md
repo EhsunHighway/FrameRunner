@@ -276,18 +276,27 @@ int  arp_send_reply(Simulator *sim,
 
 ## Function Behavior
 
-Function behavior is an implementation contract. For simple functions, the
-`Implementation order` list is written in execution order unless the text
-explicitly says order does not matter. For non-trivial functions, especially
-functions with ownership transfer, queueing, lookup, selection, state-machine
-transitions, or packet forwarding, split the section into behavior summary,
-implementation order, and postconditions so the coder does not have to guess.
-Do not mix final-state facts into `Implementation order`; put them under
-`Postconditions` unless the implementation must check that fact at that exact
-point in control flow.
-
-
 ### `arp_init`
+
+Purpose:
+
+Initialize ARP protocol state and bind it to the supplied simulator context.
+
+Implementation task:
+
+Implement `arp_init` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -298,6 +307,26 @@ Implementation order:
 This function does not allocate or initialize an ARP cache.
 
 ### `arp_send_request`
+
+Purpose:
+
+Construct and send the requested request.
+
+Implementation task:
+
+Implement `arp_send_request` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -337,13 +366,33 @@ succeed, but the unchecked call is still part of current behavior.
 
 ### `arp_send_reply`
 
+Purpose:
+
+Construct and send the requested reply.
+
+Implementation task:
+
+Implement `arp_send_reply` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `sim == NULL`, return `-1`.
 - If `iface == NULL`, return `-1`.
 - If `req_pkt == NULL`, return `-1`.
-- If `req_pkt->data == NULL`, return `-1`.
-- If `req_pkt->len < sizeof(ArpPacket)`, return `-1`.
+- Call `packet_validate_view(req_pkt, 0, sizeof(ArpPacket))`. If it returns
+  `-1`, return `-1` without reading or freeing the borrowed request packet.
 - Interpret `req_pkt->data` as the request `ArpPacket`.
 - Copy `req->sender_hardware_addr` into local `dst_mac`.
 - Copy `req->sender_protocol_addr` into local `dst_ip`.
@@ -376,12 +425,40 @@ checked here either.
 
 This function is static inside `arp.c`.
 
-Required behavior when invoked by the scheduler:
+Purpose:
+
+Process one scheduled ARP request reception for its destination interface.
+
+Implementation task:
+
+Extract the interface and packet from the event, reject events that are not
+ARP requests for that interface, send the reply, and learn the sender mapping.
+
+Inputs and existing state:
+
+- `e` supplies the event timestamp, destination interface, and packet.
+- `ctx` is the borrowed `Simulator *` used to send the reply.
+- The interface may have an attached ARP cache.
+
+Result:
+
+Return through the event callback interface after updating cache and interface
+statistics as described below.
+
+Required behavior:
+
+Do not free or replace event-owned objects unless the ordered steps explicitly
+transfer or release them.
+
+Implementation order:
 
 - Interpret `ctx` as `Simulator *`.
 - Read receiving interface from `e->dst_device`.
 - Read packet from `e->packet`.
 - If interface or packet is `NULL`, return immediately.
+- Call `packet_validate_view(pkt, 0, sizeof(ArpPacket))`. If it returns `-1`,
+  increment `iface->rx_errors` and return without reading packet bytes. Preserve
+  the handler's existing borrowed-packet ownership rule.
 - Interpret `pkt->data` as `ArpPacket`.
 - If `ns_ntohs(opcode) != ARP_OPCODE_REQUEST`, return.
 - If `ns_ntohl(target_protocol_addr) != ns_ntohl(iface->ip_addr)`, return.
@@ -393,19 +470,43 @@ Required behavior when invoked by the scheduler:
 - If reply send returned `0`, set `iface->last_tx_time = e->timestamp`.
 - Otherwise increment `iface->tx_errors` and set `last_error_time`.
 
-Current implementation note: the handler does not check packet length before
-casting `pkt->data` to `ArpPacket`.
-
 ### `arp_reply_handler`
 
 This function is static inside `arp.c`.
 
-Required behavior when invoked by the scheduler:
+Purpose:
+
+Process one scheduled ARP reply reception for its destination interface.
+
+Implementation task:
+
+Extract the interface and packet from the event, reject non-reply packets,
+learn the sender mapping, and release packets waiting on that sender address.
+
+Inputs and existing state:
+
+- `e` supplies the event timestamp, destination interface, and packet.
+- `ctx` is interpreted as the borrowed `Simulator *` callback context.
+- The interface may have an attached ARP cache.
+
+Result:
+
+Return through the event callback interface after any cache and receive-time
+updates described below.
+
+Required behavior:
+
+Do not perform reply-generation behavior in this handler.
+
+Implementation order:
 
 - Interpret `ctx` as `Simulator *`.
 - Read receiving interface from `e->dst_device`.
 - Read packet from `e->packet`.
 - If interface or packet is `NULL`, return immediately.
+- Call `packet_validate_view(pkt, 0, sizeof(ArpPacket))`. If it returns `-1`,
+  increment `iface->rx_errors` and return without reading packet bytes. Preserve
+  the handler's existing borrowed-packet ownership rule.
 - Interpret `pkt->data` as `ArpPacket`.
 - If `ns_ntohs(opcode) != ARP_OPCODE_REPLY`, return.
 - If `iface->arp_cache != NULL`:

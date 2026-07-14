@@ -199,18 +199,27 @@ int         device_send_packet(Device    *dev,
 
 ## Function Behavior
 
-Function behavior is an implementation contract. For simple functions, the
-`Implementation order` list is written in execution order unless the text
-explicitly says order does not matter. For non-trivial functions, especially
-functions with ownership transfer, queueing, lookup, selection, state-machine
-transitions, or packet forwarding, split the section into behavior summary,
-implementation order, and postconditions so the coder does not have to guess.
-Do not mix final-state facts into `Implementation order`; put them under
-`Postconditions` unless the implementation must check that fact at that exact
-point in control flow.
-
-
 ### `device_create`
+
+Purpose:
+
+Allocate and initialize a new device object.
+
+Implementation task:
+
+Implement `device_create` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -231,6 +240,26 @@ The implementation does not initialize unused interface slots. Only
 
 ### `device_free`
 
+Purpose:
+
+Release the interface array and storage owned by the device.
+
+Implementation task:
+
+Implement `device_free` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `dev == NULL`, return immediately.
@@ -241,6 +270,26 @@ Implementation order:
 The function assumes live interface slots contain owned interface pointers.
 
 ### `device_add_interface`
+
+Purpose:
+
+Attach one interface to the device.
+
+Implementation task:
+
+Implement `device_add_interface` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -261,6 +310,26 @@ interface.
 
 ### `device_get_interface_by_name`
 
+Purpose:
+
+Find a device interface with the supplied name.
+
+Implementation task:
+
+Implement `device_get_interface_by_name` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `dev == NULL`, return `NULL`.
@@ -270,6 +339,26 @@ Implementation order:
 - If no match exists, return `NULL`.
 
 ### `device_get_interface_by_ip`
+
+Purpose:
+
+Find the device interface with the supplied IPv4 address.
+
+Implementation task:
+
+Implement `device_get_interface_by_ip` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -283,7 +372,31 @@ byte order as `Interface.ip_addr`.
 
 ### `device_receive_packet`
 
-Current required behavior:
+Purpose:
+
+Define the base `Device` receive hook used by generic device-facing code.
+
+Implementation task:
+
+Validate the device, ingress interface, and packet arguments. This base-layer
+function is intentionally a stub; protocol-capable device types provide the
+real receive path.
+
+Inputs and existing state:
+
+- `dev` is the target device.
+- `in_iface` is the interface on which `pkt` arrived.
+- `pkt` remains owned by the caller because this stub does not consume it.
+
+Result:
+
+Return `-1` for any null argument and `0` when all three arguments are valid.
+
+Required behavior:
+
+Do not inspect, mutate, forward, or free the packet.
+
+Implementation order:
 
 - If `dev == NULL`, return `-1`.
 - If `in_iface == NULL`, return `-1`.
@@ -294,7 +407,31 @@ This is a stub. Host, switch, and router modules provide real receive behavior.
 
 ### `device_send_packet`
 
-Current required behavior:
+Purpose:
+
+Define the base `Device` send hook used by generic device-facing code.
+
+Implementation task:
+
+Validate the device, egress interface, and packet arguments. This base-layer
+function is intentionally a stub; protocol-capable device types provide the
+real send path.
+
+Inputs and existing state:
+
+- `dev` is the sending device.
+- `out_iface` is the requested egress interface.
+- `pkt` remains owned by the caller because this stub does not consume it.
+
+Result:
+
+Return `-1` for any null argument and `0` when all three arguments are valid.
+
+Required behavior:
+
+Do not inspect, mutate, transmit, or free the packet.
+
+Implementation order:
 
 - If `dev == NULL`, return `-1`.
 - If `out_iface == NULL`, return `-1`.

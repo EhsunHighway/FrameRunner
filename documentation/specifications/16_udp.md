@@ -327,22 +327,31 @@ int  udp_receive(Interface *iface,
 
 ## Function Behavior
 
-Function behavior is an implementation contract. For simple functions, the
-`Implementation order` list is written in execution order unless the text
-explicitly says order does not matter. For non-trivial functions, especially
-functions with ownership transfer, queueing, lookup, selection, state-machine
-transitions, or packet forwarding, split the section into behavior summary,
-implementation order, and postconditions so the coder does not have to guess.
-Do not mix final-state facts into `Implementation order`; put them under
-`Postconditions` unless the implementation must check that fact at that exact
-point in control flow.
-
-
 ### `udp_init`
 
 Behavior summary:
 
 `udp_init` prepares caller-owned UDP state so no UDP sockets are bound.
+
+Purpose:
+
+Initialize the supplied udp state to its documented empty or default state.
+
+Implementation task:
+
+Implement `udp_init` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -358,6 +367,26 @@ Current implementation does not clear `port`, `recv_handler`, or `ctx` for each
 socket slot. The `valid` bit is the authority.
 
 ### `udp_bind`
+
+Purpose:
+
+Bind a UDP receive handler and context to one local port.
+
+Implementation task:
+
+Implement `udp_bind` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -379,6 +408,26 @@ Implementation order:
 
 ### `udp_unbind`
 
+Purpose:
+
+Remove the UDP binding for one local port.
+
+Implementation task:
+
+Implement `udp_unbind` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `state == NULL`, return `-1`.
@@ -394,6 +443,26 @@ Implementation order:
 Current implementation does not clear `recv_handler` or `ctx`.
 
 ### `udp_send`
+
+Purpose:
+
+Construct and send one UDP datagram from the supplied local endpoint.
+
+Implementation task:
+
+Implement `udp_send` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -419,6 +488,26 @@ Implementation order:
 
 ### `udp_receive`
 
+Purpose:
+
+Validate and deliver one UDP datagram received from IP.
+
+Implementation task:
+
+Implement `udp_receive` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `iface == NULL`, return `-1`.
@@ -434,19 +523,8 @@ Implementation order:
   - free `pkt`
   - increment `iface->rx_errors`
   - return `-1`
-- If `pkt->len < UDP_HDR_LEN`:
-  - free `pkt`
-  - increment `iface->rx_errors`
-  - return `-1`
-- If `pkt->head == NULL || pkt->data == NULL`:
-  - free `pkt`
-  - increment `iface->rx_errors`
-  - return `-1`
-- Verify current bytes are inside packet allocation:
-  - `pkt->data >= pkt->head + IP_HDR_LEN`
-  - `pkt->data < end`
-  - `pkt->len <= end - pkt->data`
-- If range check fails:
+- Call `packet_validate_view(pkt, IP_HDR_LEN, UDP_HDR_LEN)`.
+- If it returns `-1`:
   - free `pkt`
   - increment `iface->rx_errors`
   - return `-1`

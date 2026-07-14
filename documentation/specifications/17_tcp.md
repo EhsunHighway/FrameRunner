@@ -521,23 +521,32 @@ void tcp_retransmit_handler(const Event *e, void *ctx);
 
 ## Function Behavior
 
-Function behavior is an implementation contract. For simple functions, the
-`Implementation order` list is written in execution order unless the text
-explicitly says order does not matter. For non-trivial functions, especially
-functions with ownership transfer, queueing, lookup, selection, state-machine
-transitions, or packet forwarding, split the section into behavior summary,
-implementation order, and postconditions so the coder does not have to guess.
-Do not mix final-state facts into `Implementation order`; put them under
-`Postconditions` unless the implementation must check that fact at that exact
-point in control flow.
-
-
 ### `tcp_init`
 
 Behavior summary:
 
 `tcp_init` prepares caller-owned TCP table storage so no TCP control blocks are
 active.
+
+Purpose:
+
+Initialize the supplied tcp state to its documented empty or default state.
+
+Implementation task:
+
+Implement `tcp_init` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -550,6 +559,26 @@ Postconditions after `table != NULL`:
 - Every TCB slot has `valid == 0`.
 
 ### `tcp_listen`
+
+Purpose:
+
+Create or initialize a listening TCB for the supplied local endpoint.
+
+Implementation task:
+
+Implement `tcp_listen` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -573,6 +602,26 @@ Implementation order:
 `local_ip == 0` means wildcard listener.
 
 ### `tcp_connect`
+
+Purpose:
+
+Start an active TCP open for the supplied local and remote endpoints.
+
+Implementation task:
+
+Implement `tcp_connect` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -606,6 +655,26 @@ Implementation order:
 
 ### `tcp_send`
 
+Purpose:
+
+Send application data on an established TCP connection.
+
+Implementation task:
+
+Implement `tcp_send` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `sim == NULL || tcb == NULL`, return `-1`.
@@ -631,17 +700,47 @@ and returns `0`; it does not loop over the remaining data.
 
 ### `tcp_receive`
 
-Required validation behavior:
+Purpose:
+
+Process one TCP segment delivered by IP and apply it to the matching TCB.
+
+Implementation task:
+
+Validate the packet and recovered IP/TCP headers, select an established TCB or
+listener, then execute exactly the receive transition belonging to that TCB's
+current state. The function owns `pkt` after the initial null-interface case
+and must either free it or transfer its payload to the receive callback.
+
+Inputs and existing state:
+
+- `iface` is the receiving interface and owns receive counters.
+- `pkt` begins at the TCP header; the stripped IPv4 header is immediately
+  before `pkt->data`.
+- `ctx` is a `TcpContext *` containing the simulator and TCB table.
+
+Result:
+
+Return `0` for a consumed segment, including valid segments that only cause an
+ACK or state transition. Return `-1` for invalid input, missing connection
+state, or an unaccepted segment, with counters and packet ownership handled as
+specified below.
+
+Required behavior:
+
+Perform the validation and lookup phases before selecting one state-specific
+branch. Execute at most one state branch for the received segment.
+
+Implementation order:
+
+Validation phase:
 
 - If `iface == NULL`, return `-1` without touching `pkt`.
 - If `pkt == NULL`, increment `iface->rx_errors` and return `-1`.
 - If `ctx == NULL`, free `pkt`, increment `iface->rx_errors`, return `-1`.
 - If `TcpContext.sim == NULL || TcpContext.table == NULL`, free `pkt`,
   increment `iface->rx_errors`, return `-1`.
-- Reject packets shorter than `TCP_HDR_LEN`.
-- Reject NULL `pkt->head` or `pkt->data`.
-- Reject packets where `pkt->data < pkt->head + IP_HDR_LEN`.
-- Reject packets whose visible bytes exceed packet allocation.
+- Call `packet_validate_view(pkt, IP_HDR_LEN, TCP_HDR_LEN)`. If it returns
+  `-1`, free `pkt`, increment `iface->rx_errors`, and return `-1`.
 - Recover stripped IP header at `pkt->data - IP_HDR_LEN`.
 - Reject packets whose recovered IP protocol is not `IPPROTO_TCP`.
 - Decode TCP header fields from network byte order.
@@ -746,6 +845,26 @@ Unhandled state or unaccepted segment:
 
 ### `tcp_close`
 
+Purpose:
+
+Start the valid TCP close transition for the supplied TCB.
+
+Implementation task:
+
+Implement `tcp_close` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `sim == NULL || tcb == NULL`, return `-1`.
@@ -766,6 +885,26 @@ Implementation order:
 - Return `0`.
 
 ### `tcp_retransmit_handler`
+
+Purpose:
+
+Process one TCP retransmission timer for its TCB.
+
+Implementation task:
+
+Implement `tcp_retransmit_handler` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 

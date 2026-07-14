@@ -1,6 +1,7 @@
 #include "ip.h"
 #include "arp.h"
 #include "arp_cache.h"
+#include "../common/ip_utils.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -14,20 +15,10 @@ static void ip_rx_shim(Interface *iface,
                ctx);
 }
 
-static uint32_t ip_prefix_mask(uint8_t prefix_len) {
-    if (prefix_len == 0) {
-        return 0;
-    }
-    if (prefix_len >= 32) {
-        return 0xFFFFFFFFu;
-    }
-    return 0xFFFFFFFFu << (32 - prefix_len);
-}
-
 static int ip_same_subnet(uint32_t a_host,
                           uint32_t b_host,
                           uint8_t  prefix_len) {
-    uint32_t mask = ip_prefix_mask(prefix_len);
+    uint32_t mask = ipv4_prefix_mask(prefix_len);
     return (a_host & mask) == (b_host & mask);
 }
 
@@ -344,7 +335,7 @@ uint16_t  ip_checksum(IpHeader *ip_hdr) {
 }
 
 int  ip_validate_header(Packet *pkt) {
-    if (!pkt || !pkt->data || pkt->len < IP_HDR_LEN) {
+    if (packet_validate_view(pkt, 0, IP_HDR_LEN) != 0) {
         return -1;
     }
 

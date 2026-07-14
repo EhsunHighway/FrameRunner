@@ -195,6 +195,8 @@ It provides:
 - packet allocation with fixed headroom
 - prepend of bytes before current `data`
 - strip of bytes from current `data`
+- validation of visible bytes and required stripped headroom against the packet
+  allocation
 - deep clone of visible bytes
 - packet destruction
 - one's-complement checksum helper
@@ -214,6 +216,7 @@ It does not:
 | --- | --- |
 | Own packet byte allocation | `Packet` |
 | Move visible data pointer | Packet module |
+| Validate packet allocation geometry | Packet module, using `packet_validate_view` |
 | Interpret header bytes | Protocol modules |
 | Decide packet route or egress interface | Host/router/switch/IP modules |
 | Clone before multi-destination sends | Caller, using `packet_clone` |
@@ -302,6 +305,10 @@ int      packet_prepend(Packet     *p,
 
 int      packet_strip(Packet *p, size_t header_len);
 
+int      packet_validate_view(const Packet *pkt,
+                              size_t        required_headroom,
+                              size_t        minimum_visible_len);
+
 Packet  *packet_clone(const Packet *p);
 
 void     packet_free(Packet *p);
@@ -313,18 +320,27 @@ void     packet_dump(const Packet *p);
 
 ## Function Behavior
 
-Function behavior is an implementation contract. For simple functions, the
-`Implementation order` list is written in execution order unless the text
-explicitly says order does not matter. For non-trivial functions, especially
-functions with ownership transfer, queueing, lookup, selection, state-machine
-transitions, or packet forwarding, split the section into behavior summary,
-implementation order, and postconditions so the coder does not have to guess.
-Do not mix final-state facts into `Implementation order`; put them under
-`Postconditions` unless the implementation must check that fact at that exact
-point in control flow.
-
-
 ### `packet_create`
+
+Purpose:
+
+Allocate and initialize a new packet object.
+
+Implementation task:
+
+Implement `packet_create` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -345,6 +361,26 @@ ACSL contract requires `capacity > 0`. Tests and new callers should treat
 zero-capacity packet creation as outside the supported API.
 
 ### `packet_prepend`
+
+Purpose:
+
+Prepend the supplied header bytes to the packet’s visible data.
+
+Implementation task:
+
+Implement `packet_prepend` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -367,6 +403,26 @@ The function does not check whether `header` is `NULL`. A nonzero
 
 ### `packet_strip`
 
+Purpose:
+
+Remove the requested number of bytes from the front of the packet’s visible data.
+
+Implementation task:
+
+Implement `packet_strip` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - Caller must pass a valid packet.
@@ -383,7 +439,78 @@ Postconditions:
 
 `header_len == 0` is accepted by the implementation and is a no-op success.
 
+### `packet_validate_view`
+
+Purpose:
+
+Validate that a packet's current visible view and a required amount of
+previously stripped headroom are inside the packet's allocation.
+
+Implementation task:
+
+Given a borrowed packet, the number of bytes that a caller must be able to read
+immediately before `pkt->data`, and the minimum visible protocol length, decide
+whether both ranges are safe to access. This helper centralizes the allocation
+geometry previously repeated by ICMP, UDP, TCP, and OSPF receive paths.
+
+Inputs and existing state:
+
+- `pkt` is borrowed and must not be modified or freed.
+- `required_headroom` is the number of readable bytes required immediately
+  before `pkt->data`; IP protocol handlers pass `IP_HDR_LEN`.
+- `minimum_visible_len` is the minimum number of bytes required beginning at
+  `pkt->data`.
+
+Result:
+
+- Return `0` only when the required headroom, visible start, and complete
+  visible byte range are inside the allocation and `pkt->len` meets the minimum.
+  A zero-length view may begin exactly at allocation end when
+  `minimum_visible_len == 0`.
+- Return `-1` for any invalid packet pointer or range.
+
+Required behavior:
+
+- Do not modify or free `pkt`.
+- Do not update protocol counters; the caller owns failure handling.
+- Check that `pkt->data` is inside the allocation before subtracting it from
+  the allocation end.
+
+Implementation order:
+
+- If `pkt == NULL`, `pkt->head == NULL`, or `pkt->data == NULL`, return `-1`.
+- If `pkt->capacity > SIZE_MAX - PKT_HEADROOM`, return `-1`.
+- Set `allocation_size = PKT_HEADROOM + pkt->capacity`.
+- If `required_headroom > allocation_size`, return `-1`.
+- Set `end = pkt->head + allocation_size`.
+- If `pkt->data < pkt->head + required_headroom` or `pkt->data > end`, return
+  `-1`.
+- Set `remaining = (size_t)(end - pkt->data)`.
+- If `pkt->len > remaining`, return `-1`.
+- If `pkt->len < minimum_visible_len`, return `-1`.
+- Return `0`.
+
 ### `packet_clone`
+
+Purpose:
+
+Create an independently owned copy of the packet’s visible bytes and metadata.
+
+Implementation task:
+
+Implement `packet_clone` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -400,6 +527,26 @@ clone independently.
 
 ### `packet_free`
 
+Purpose:
+
+Release the byte buffer and descriptor owned by the packet.
+
+Implementation task:
+
+Implement `packet_free` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `p == NULL`, return immediately.
@@ -409,6 +556,26 @@ Implementation order:
 The function must not free `p->data`.
 
 ### `packet_checksum`
+
+Purpose:
+
+Compute the packet module’s 16-bit one’s-complement checksum for a supplied byte range.
+
+Implementation task:
+
+Implement `packet_checksum` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -421,6 +588,26 @@ Implementation order:
 The implementation currently requires `len > 0` in its ACSL contract.
 
 ### `packet_dump`
+
+Purpose:
+
+Print the currently visible packet metadata and bytes for debugging.
+
+Implementation task:
+
+Implement `packet_dump` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -570,6 +757,22 @@ int packet_prepend(Packet *p, const void *header, size_t header_len);
 int packet_strip(Packet *p, size_t header_len);
 ```
 
+### `packet_validate_view`
+
+```c
+/*@
+    assigns \nothing;
+    ensures \result == 0 || \result == -1;
+*/
+int packet_validate_view(const Packet *pkt,
+                         size_t required_headroom,
+                         size_t minimum_visible_len);
+```
+
+The natural-language contract above is authoritative for allocation geometry.
+The lightweight ACSL contract records that the helper is pure and returns only
+the documented status values.
+
 ### `packet_clone`
 
 ```c
@@ -645,12 +848,19 @@ Minimum KLEVA tests:
 13. `packet_strip` fails when `header_len > len`.
 14. Failed strip leaves `data` and `len` unchanged.
 15. `packet_strip(p, 0)` is a no-op success.
-16. `packet_clone` copies visible bytes and `layer`.
-17. `packet_clone` gives the clone a different `id`.
-18. Mutating clone visible bytes does not mutate source visible bytes.
-19. `packet_free(NULL)` does not crash.
-20. `packet_checksum` handles even-length input.
-21. `packet_checksum` handles odd-length input according to current behavior.
+16. `packet_validate_view` rejects NULL packet, `head`, and `data` pointers.
+17. It rejects insufficient required headroom.
+18. It rejects a visible start beyond allocation end and permits a start equal
+    to allocation end only for a zero-length view with a zero minimum.
+19. It rejects a visible length that exceeds the remaining allocation.
+20. It rejects a visible length below `minimum_visible_len`.
+21. It accepts a valid view without changing packet fields.
+22. `packet_clone` copies visible bytes and `layer`.
+23. `packet_clone` gives the clone a different `id`.
+24. Mutating clone visible bytes does not mutate source visible bytes.
+25. `packet_free(NULL)` does not crash.
+26. `packet_checksum` handles even-length input.
+27. `packet_checksum` handles odd-length input according to current behavior.
 
 ## Common Mistakes
 

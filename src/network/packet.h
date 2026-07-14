@@ -81,6 +81,14 @@ int      packet_prepend(Packet     *p,
 int      packet_strip(Packet *p, size_t header_len);          
 
 /*@
+  assigns \nothing;
+  ensures \result == 0 || \result == -1;
+*/
+int      packet_validate_view(const Packet *pkt,
+                              size_t        required_headroom,
+                              size_t        minimum_visible_len);
+
+/*@
   requires \valid_read(p);
   requires p->len > 0 ==> \valid_read(p->data + (0 .. p->len-1));
   allocates \result;

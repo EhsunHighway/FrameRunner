@@ -283,23 +283,32 @@ void arp_cache_cleanup(ArpCache *cache, uint64_t current_time);
 
 ## Function Behavior
 
-Function behavior is an implementation contract. For simple functions, the
-`Implementation order` list is written in execution order unless the text
-explicitly says order does not matter. For non-trivial functions, especially
-functions with ownership transfer, queueing, lookup, selection, state-machine
-transitions, or packet forwarding, split the section into behavior summary,
-implementation order, and postconditions so the coder does not have to guess.
-Do not mix final-state facts into `Implementation order`; put them under
-`Postconditions` unless the implementation must check that fact at that exact
-point in control flow.
-
-
 ### `arp_cache_init`
 
 Behavior summary:
 
 `arp_cache_init` prepares caller-owned ARP cache storage so there are no learned
 entries and no pending packets.
+
+Purpose:
+
+Initialize the supplied arp cache state to its documented empty or default state.
+
+Implementation task:
+
+Implement `arp_cache_init` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -317,6 +326,26 @@ This function is the public initializer. Host and Router creation should call
 it instead of manually setting fields.
 
 ### `arp_cache_add`
+
+Purpose:
+
+Insert or refresh one IP-to-MAC mapping in the ARP cache.
+
+Implementation task:
+
+Implement `arp_cache_add` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -344,6 +373,26 @@ a readable six-byte MAC pointer when `cache != NULL` and `ip_addr != 0`.
 
 ### `arp_cache_lookup`
 
+Purpose:
+
+Look up the MAC address currently cached for one IPv4 address.
+
+Implementation task:
+
+Implement `arp_cache_lookup` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `cache == NULL`, return `-1`.
@@ -358,6 +407,26 @@ Implementation order:
 Lookup does not send ARP requests.
 
 ### `arp_pending_enqueue`
+
+Purpose:
+
+Queue a packet while address resolution for its next hop is pending.
+
+Implementation task:
+
+Implement `arp_pending_enqueue` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -378,6 +447,26 @@ Implementation order:
 - If no unused pending slot exists, return `-1`.
 
 ### `arp_pending_flush`
+
+Purpose:
+
+Transmit and remove packets waiting for the resolved IPv4 address.
+
+Implementation task:
+
+Implement `arp_pending_flush` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -401,6 +490,26 @@ Implementation order:
 `mac_addr` is passed to `ethernet_send` as the destination MAC.
 
 ### `arp_cache_cleanup`
+
+Purpose:
+
+Expire stale ARP mappings and pending packets according to simulated time.
+
+Implementation task:
+
+Implement `arp_cache_cleanup` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 

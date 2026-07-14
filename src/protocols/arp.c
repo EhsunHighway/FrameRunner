@@ -12,6 +12,11 @@ static void arp_request_handler(const Event *e, void *ctx) {
         return;
     }
 
+    if (packet_validate_view(pkt, 0, sizeof(ArpPacket)) != 0) {
+        iface->rx_errors++;
+        return;
+    }
+
     ArpPacket *arp_pkt = (ArpPacket *)pkt->data;
     if (ns_ntohs(arp_pkt->opcode) != ARP_OPCODE_REQUEST) {
         return; // Not an ARP request, ignore
@@ -76,6 +81,11 @@ static void arp_reply_handler(const Event *e, void *ctx) {
     Interface *iface = (Interface *)e->dst_device;
     Packet    *pkt   = (Packet *)e->packet;
     if (!iface || !pkt) {
+        return;
+    }
+
+    if (packet_validate_view(pkt, 0, sizeof(ArpPacket)) != 0) {
+        iface->rx_errors++;
         return;
     }
 
@@ -163,7 +173,7 @@ int  arp_send_reply(Simulator *sim,
         return -1;
     }
 
-    if (!req_pkt->data || req_pkt->len < sizeof(ArpPacket)) {
+    if (packet_validate_view(req_pkt, 0, sizeof(ArpPacket)) != 0) {
         return -1;
     }
 

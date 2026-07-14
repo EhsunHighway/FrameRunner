@@ -260,18 +260,27 @@ int  ethernet_receive(Interface *iface,
 
 ## Function Behavior
 
-Function behavior is an implementation contract. For simple functions, the
-`Implementation order` list is written in execution order unless the text
-explicitly says order does not matter. For non-trivial functions, especially
-functions with ownership transfer, queueing, lookup, selection, state-machine
-transitions, or packet forwarding, split the section into behavior summary,
-implementation order, and postconditions so the coder does not have to guess.
-Do not mix final-state facts into `Implementation order`; put them under
-`Postconditions` unless the implementation must check that fact at that exact
-point in control flow.
-
-
 ### `ethernet_send`
+
+Purpose:
+
+Encapsulate a packet in an Ethernet frame and transmit it through an interface.
+
+Implementation task:
+
+Implement `ethernet_send` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -317,12 +326,33 @@ link_transmit(iface->link,
 
 ### `ethernet_receive`
 
+Purpose:
+
+Validate an Ethernet frame and dispatch or deliver its payload.
+
+Implementation task:
+
+Implement `ethernet_receive` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `iface == NULL`, return `-1`.
 - If `frame == NULL`, return `-1`.
 - If `out_ethertype == NULL`, return `-1`.
-- If `frame->len < ETH_HDR_LEN`, return `-1`.
+- Call `packet_validate_view(frame, 0, ETH_HDR_LEN)`. If it returns `-1`,
+  return `-1` without reading or modifying the frame.
 - If `iface->state == IFACE_ERR_DISABLED`, return `-1`.
 - Interpret `frame->data` as an `EthernetHeader`.
 - Convert header EtherType from network to host order and store it in
@@ -349,6 +379,26 @@ Return codes:
 | `-1` | Bad input, disabled interface, too-short frame, or strip failure. |
 
 ### `ethernet_receive_event`
+
+Purpose:
+
+Validate and process a received event.
+
+Implementation task:
+
+Implement `ethernet_receive_event` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 

@@ -1,15 +1,6 @@
 #include "route_table.h"
+#include "../common/ip_utils.h"
 #include <string.h>
-
-static uint32_t route_prefix_mask(uint8_t prefix_len) {
-    if (prefix_len == 0) {
-        return 0;
-    } else if (prefix_len >= 32) {
-        return 0xFFFFFFFF;
-    } else {
-        return 0xFFFFFFFF << (32 - prefix_len);
-    }
-}
 
 static int route_admin_distance(uint8_t proto) {
     switch (proto) {
@@ -50,7 +41,7 @@ int            route_table_add(RouteTable *table,
         return -1;
     }
 
-    uint32_t normalized_prefix = prefix & route_prefix_mask(prefix_len);
+    uint32_t normalized_prefix = prefix & ipv4_prefix_mask(prefix_len);
 
     /*
      * Check if the route already exists in the RIB (duplicate key)
@@ -113,7 +104,7 @@ int            route_table_delete(RouteTable *table,
         return -1;
     }
 
-    uint32_t normalized_prefix = prefix & route_prefix_mask(prefix_len);
+    uint32_t normalized_prefix = prefix & ipv4_prefix_mask(prefix_len);
     for (int i = 0; i < ROUTE_RIB_SIZE; i++) {
         RouteRibEntry *entry = &table->rib[i];
         if (entry->valid                           &&
@@ -153,13 +144,13 @@ RouteFibEntry *route_table_lookup(RouteTable *table,
         if (entry->valid) {
             if (entry->prefix_len <= 32) {
                 if ((entry->prefix_len > 24)) {
-                    if ((dst_ip & route_prefix_mask(entry->prefix_len)) == entry->prefix) {
+                    if ((dst_ip & ipv4_prefix_mask(entry->prefix_len)) == entry->prefix) {
                         if (!best_match || entry->prefix_len > best_match->prefix_len) {
                             best_match = entry;
                         }
                     }
                 } else if ((entry->prefix_len <= 24)) {
-                    if ((dst_ip & route_prefix_mask(entry->prefix_len)) == entry->prefix) {
+                    if ((dst_ip & ipv4_prefix_mask(entry->prefix_len)) == entry->prefix) {
                         if (!best_match || entry->prefix_len > best_match->prefix_len) {
                             best_match = entry;
                         }

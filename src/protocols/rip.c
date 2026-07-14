@@ -1,17 +1,8 @@
 #include "rip.h"
 #include "ip.h"
+#include "../common/ip_utils.h"
 #include "stdlib.h"
 #include <string.h>
-
-static uint32_t rip_prefix_mask(uint8_t prefix_len) {
-    if (prefix_len == 0) {
-        return 0;
-    } else if (prefix_len >= 32) {
-        return 0xFFFFFFFFu;
-    } else {
-        return 0xFFFFFFFFu << (32 - prefix_len);
-    }
-}
 
 static void rip_schedule_periodic(Simulator     *sim,
                                   EventType      type,
@@ -140,7 +131,7 @@ void rip_receive(Interface *iface,
         return;
     }
 
-    if (payload->len < RIP_HDR_LEN) {
+    if (packet_validate_view(payload, 0, RIP_HDR_LEN) != 0) {
         packet_free(payload);
         return;
     }
@@ -182,7 +173,7 @@ void rip_receive(Interface *iface,
         if (ip_mask_to_prefix_len(sub_mask, &prefix_len) != 0) {
             continue;
         }
-        prefix &= rip_prefix_mask(prefix_len);
+        prefix &= ipv4_prefix_mask(prefix_len);
 
         if (metric > RIP_INFINITY) {
             metric = RIP_INFINITY;
@@ -298,7 +289,7 @@ int rip_send_update(RipState *state, Interface *out_iface) {
         rip_entry->afi         = ns_htons(RIP_AFI_IPV4);
         rip_entry->route_tag   = ns_htons(0);
         rip_entry->ip_addr     = ns_htonl(entry->prefix);
-        rip_entry->subnet_mask = ns_htonl(rip_prefix_mask(entry->prefix_len));
+        rip_entry->subnet_mask = ns_htonl(ipv4_prefix_mask(entry->prefix_len));
         rip_entry->next_hop    = ns_htonl(entry->next_hop);
         rip_entry->metric      = ns_htonl(entry->metric > RIP_INFINITY ? RIP_INFINITY : entry->metric);
         entry_count++;

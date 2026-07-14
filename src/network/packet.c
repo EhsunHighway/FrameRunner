@@ -64,6 +64,35 @@ int packet_strip(Packet *p, size_t header_len) {
     return 0;
 }
 
+int packet_validate_view(const Packet *pkt,
+                         size_t        required_headroom,
+                         size_t        minimum_visible_len) {
+    if (!pkt || !pkt->head || !pkt->data) {
+        return -1;
+    }
+
+    if (pkt->capacity > SIZE_MAX - PKT_HEADROOM) {
+        return -1;
+    }
+
+    size_t allocation_size = PKT_HEADROOM + pkt->capacity;
+    if (required_headroom > allocation_size) {
+        return -1;
+    }
+
+    uint8_t *end = pkt->head + allocation_size;
+    if (pkt->data < pkt->head + required_headroom || pkt->data > end) {
+        return -1;
+    }
+
+    size_t remaining = (size_t)(end - pkt->data);
+    if (pkt->len > remaining || pkt->len < minimum_visible_len) {
+        return -1;
+    }
+
+    return 0;
+}
+
 Packet *packet_clone(const Packet *p) {
     // Allocate with capacity == p->len so the clone is exactly the right size.
     // The clone gets a fresh PKT_HEADROOM, so ethernet_send can prepend onto it.

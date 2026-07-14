@@ -86,7 +86,11 @@ int  ethernet_send(Simulator    *sim,
 int  ethernet_receive(Interface *iface,
                       Packet    *frame,
                       uint16_t  *out_ethertype) {
-    if (!iface || !frame || !out_ethertype || frame->len < ETH_HDR_LEN) {
+    if (!iface || !frame || !out_ethertype) {
+        return -1;
+    }
+
+    if (packet_validate_view(frame, 0, ETH_HDR_LEN) != 0) {
         return -1;
     }
 

@@ -483,25 +483,7 @@ int  tcp_receive(Interface *iface,
         return -1;
     }
 
-    if (pkt->len < TCP_HDR_LEN) {
-        packet_free(pkt);
-        iface->rx_errors++;
-        return -1;
-    }
-
-    if (!pkt->head || !pkt->data) {
-        packet_free(pkt);
-        iface->rx_errors++;
-        return -1;
-    }
-
-    if (pkt->data < pkt->head + IP_HDR_LEN) {
-        packet_free(pkt);
-        iface->rx_errors++;
-        return -1;
-    }
-
-    if (pkt->data + pkt->len > pkt->head + PKT_HEADROOM + pkt->capacity) {
+    if (packet_validate_view(pkt, IP_HDR_LEN, TCP_HDR_LEN) != 0) {
         packet_free(pkt);
         iface->rx_errors++;
         return -1;

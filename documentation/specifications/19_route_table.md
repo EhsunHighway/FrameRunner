@@ -2,7 +2,7 @@
 
 **Files:** `src/routing/route_table.c`, `src/routing/route_table.h`
 **Status:** Ready for implementation; source files are currently empty
-**Depends on:** `interface`
+**Depends on:** `interface`, `ip_utils`
 
 ## Concepts First
 
@@ -351,12 +351,13 @@ Route table allocates no dynamic memory.
 Route table storage is owned by the caller. A future Router module is expected
 to embed or allocate a `RouteTable` and call `route_table_init` before use.
 
-## Prefix Mask Helper
+## Shared Prefix Mask Helper
 
-The implementation SHOULD use one internal helper for masks:
+The implementation uses the shared host-order IPv4 prefix-mask helper declared
+in `src/common/ip_utils.h`:
 
 ```c
-static uint32_t route_prefix_mask(uint8_t prefix_len);
+uint32_t ipv4_prefix_mask(uint8_t prefix_len);
 ```
 
 Implementation order:
@@ -396,7 +397,7 @@ Administrative distance is not stored in `RouteRibEntry`. It is derived from
 `route_table_add` and `route_table_delete` MUST normalize prefixes:
 
 ```text
-normalized_prefix = prefix & route_prefix_mask(prefix_len)
+normalized_prefix = prefix & ipv4_prefix_mask(prefix_len)
 ```
 
 Example:
@@ -515,22 +516,31 @@ directly.
 
 ## Function Behavior
 
-Function behavior is an implementation contract. For simple functions, the
-`Implementation order` list is written in execution order unless the text
-explicitly says order does not matter. For non-trivial functions, especially
-functions with ownership transfer, queueing, lookup, selection, state-machine
-transitions, or packet forwarding, split the section into behavior summary,
-implementation order, and postconditions so the coder does not have to guess.
-Do not mix final-state facts into `Implementation order`; put them under
-`Postconditions` unless the implementation must check that fact at that exact
-point in control flow.
-
-
 ### `route_table_init`
 
 Behavior summary:
 
 Initialize caller-owned route-table storage to an empty, usable state.
+
+Purpose:
+
+Initialize the route table to an empty usable state.
+
+Implementation task:
+
+Implement `route_table_init` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -554,13 +564,33 @@ Behavior summary:
 Add a new RIB candidate or update an existing RIB candidate with the same RIB
 duplicate key. Rebuild the FIB after a successful add or update.
 
+Purpose:
+
+Add one route entry while preserving route-table ordering and capacity rules.
+
+Implementation task:
+
+Implement `route_table_add` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 1. If `table` is `NULL`, return `-1`.
 2. If `iface` is `NULL`, return `-1`.
 3. If `prefix_len > 32`, return `-1`.
 4. If `proto == 0`, return `-1`.
-5. Compute `normalized_prefix = prefix & route_prefix_mask(prefix_len)`.
+5. Compute `normalized_prefix = prefix & ipv4_prefix_mask(prefix_len)`.
 6. Scan all 256 RIB slots for a valid entry whose RIB duplicate key matches:
    normalized prefix, prefix length, and protocol.
 7. If a matching RIB entry is found:
@@ -597,12 +627,32 @@ Behavior summary:
 Remove one RIB candidate identified by the RIB duplicate key, then rebuild the
 FIB from the remaining RIB candidates.
 
+Purpose:
+
+Delete the route entry matching the supplied route identity.
+
+Implementation task:
+
+Implement `route_table_delete` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 1. If `table` is `NULL`, return `-1`.
 2. If `prefix_len > 32`, return `-1`.
 3. If `proto == 0`, return `-1`.
-4. Compute `normalized_prefix = prefix & route_prefix_mask(prefix_len)`.
+4. Compute `normalized_prefix = prefix & ipv4_prefix_mask(prefix_len)`.
 5. Scan all 256 RIB slots for a valid entry whose RIB duplicate key matches:
    normalized prefix, prefix length, and protocol.
 6. If no matching entry exists, return `-1`.
@@ -621,6 +671,26 @@ Deletion does not compact the RIB.
 Behavior summary:
 
 Remove all RIB candidates installed by one protocol, then rebuild the FIB once.
+
+Purpose:
+
+Remove the matching proto entries.
+
+Implementation task:
+
+Implement `route_table_flush_proto` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -644,6 +714,26 @@ Behavior summary:
 Rebuild the FIB from the RIB. The RIB is the source of truth. The resulting FIB
 contains one selected active route for each unique normalized `(prefix,
 prefix_len)` group.
+
+Purpose:
+
+Rebuild forwarding-table state from the current route-table entries.
+
+Implementation task:
+
+Implement `route_table_rebuild_fib` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -702,6 +792,26 @@ Behavior summary:
 
 Search the FIB for the best route matching `dst_ip` using longest-prefix match.
 The lookup does not modify the table.
+
+Purpose:
+
+Select the best route for the supplied destination address.
+
+Implementation task:
+
+Implement `route_table_lookup` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 

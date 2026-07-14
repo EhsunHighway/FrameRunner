@@ -311,18 +311,27 @@ uint16_t icmp_checksum(const void *data, size_t len);
 
 ## Function Behavior
 
-Function behavior is an implementation contract. For simple functions, the
-`Implementation order` list is written in execution order unless the text
-explicitly says order does not matter. For non-trivial functions, especially
-functions with ownership transfer, queueing, lookup, selection, state-machine
-transitions, or packet forwarding, split the section into behavior summary,
-implementation order, and postconditions so the coder does not have to guess.
-Do not mix final-state facts into `Implementation order`; put them under
-`Postconditions` unless the implementation must check that fact at that exact
-point in control flow.
-
-
 ### `icmp_receive`
+
+Purpose:
+
+Validate and process one ICMP message delivered by IP.
+
+Implementation task:
+
+Implement `icmp_receive` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -331,25 +340,8 @@ Implementation order:
 - If `pkt == NULL`:
   - increment `iface->rx_errors`
   - return `-1`
-- If `pkt->len < ICMP_HDR_LEN`:
-  - increment `iface->rx_errors`
-  - free `pkt`
-  - return `-1`
-- If `pkt->head == NULL` or `pkt->data == NULL`:
-  - increment `iface->rx_errors`
-  - free `pkt`
-  - return `-1`
-- Compute packet allocation end:
-
-```c
-end = pkt->head + PKT_HEADROOM + pkt->capacity
-```
-
-- If `pkt->data < pkt->head + IP_HDR_LEN` or `pkt->data >= end`:
-  - increment `iface->rx_errors`
-  - free `pkt`
-  - return `-1`
-- If `pkt->len > end - pkt->data`:
+- Call `packet_validate_view(pkt, IP_HDR_LEN, ICMP_HDR_LEN)`.
+- If it returns `-1`:
   - increment `iface->rx_errors`
   - free `pkt`
   - return `-1`
@@ -370,6 +362,26 @@ end = pkt->head + PKT_HEADROOM + pkt->capacity
 Supported-but-consumed messages do not increment `rx_dropped`.
 
 ### `icmp_send_echo_request`
+
+Purpose:
+
+Construct and send the requested echo request.
+
+Implementation task:
+
+Implement `icmp_send_echo_request` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -396,24 +408,33 @@ Implementation order:
 
 ### `icmp_send_echo_reply`
 
+Purpose:
+
+Construct and send the requested echo reply.
+
+Implementation task:
+
+Implement `icmp_send_echo_reply` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `sim == NULL`, return `-1`.
 - If `iface == NULL`, return `-1`.
 - If `req_pkt == NULL`, return `-1`.
-- If `req_pkt->len < ICMP_HDR_LEN`:
-  - increment `iface->tx_errors`
-  - free `req_pkt`
-  - return `-1`
-- If `req_pkt->head == NULL` or `req_pkt->data == NULL`:
-  - increment `iface->tx_errors`
-  - free `req_pkt`
-  - return `-1`
-- If `req_pkt->data < req_pkt->head + IP_HDR_LEN`:
-  - increment `iface->tx_errors`
-  - free `req_pkt`
-  - return `-1`
-- If `req_pkt->data >= end` or `req_pkt->len > end - req_pkt->data`:
+- Call `packet_validate_view(req_pkt, IP_HDR_LEN, ICMP_HDR_LEN)`.
+- If it returns `-1`:
   - increment `iface->tx_errors`
   - free `req_pkt`
   - return `-1`
@@ -449,16 +470,31 @@ Implementation order:
 This helper is static inside `icmp.c`. Public error helper functions all call
 it.
 
+Purpose:
+
+Construct and send the requested error.
+
+Implementation task:
+
+Implement `icmp_send_error` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `sim == NULL`, `iface == NULL`, or `orig_pkt == NULL`, return `-1`.
-- If `orig_pkt->head == NULL` or `orig_pkt->data == NULL`:
-  - increment `iface->tx_errors`
-  - return `-1`
-- If `orig_pkt->data < orig_pkt->head + IP_HDR_LEN`:
-  - increment `iface->tx_errors`
-  - return `-1`
-- If current payload range is outside the packet allocation:
+- Call `packet_validate_view(orig_pkt, IP_HDR_LEN, 0)`.
+- If it returns `-1`:
   - increment `iface->tx_errors`
   - return `-1`
 - Read original IP header at `orig_pkt->data - IP_HDR_LEN`.
@@ -514,6 +550,26 @@ that detected TTL expiration remains responsible for the original packet's
 lifetime after the helper returns.
 
 ### `icmp_checksum`
+
+Purpose:
+
+Compute the ICMP checksum over the supplied message bytes.
+
+Implementation task:
+
+Implement `icmp_checksum` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 

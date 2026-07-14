@@ -280,20 +280,29 @@ Interface *switch_get_port_by_name(Switch *sw, const char *name);
 
 ## Function Behavior
 
-Function behavior is an implementation contract. For simple functions, the
-`Implementation order` list is written in execution order unless the text
-explicitly says order does not matter. For non-trivial functions, especially
-functions with ownership transfer, queueing, lookup, selection, state-machine
-transitions, or packet forwarding, split the section into behavior summary,
-implementation order, and postconditions so the coder does not have to guess.
-Do not mix final-state facts into `Implementation order`; put them under
-`Postconditions` unless the implementation must check that fact at that exact
-point in control flow.
-
-
 ### `mac_age_handler`
 
 This function is static inside `switch.c`.
+
+Purpose:
+
+Age handler entries according to simulated time.
+
+Implementation task:
+
+Implement `mac_age_handler` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -317,6 +326,26 @@ This is per-switch callback scheduling, not a global fallback handler.
 
 This function is static inside `switch.c`.
 
+Purpose:
+
+Adapt the generic interface receive callback to the switch receive operation.
+
+Implementation task:
+
+Implement `switch_rx_shim` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - Cast `ctx` to `Switch *`.
@@ -326,6 +355,26 @@ Implementation order:
 - Call `switch_receive(sw, iface, pkt, ethertype)`.
 
 ### `switch_create`
+
+Purpose:
+
+Allocate and initialize a new switch object.
+
+Implementation task:
+
+Implement `switch_create` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -358,6 +407,26 @@ Implementation order:
 
 ### `switch_free`
 
+Purpose:
+
+Release the ports, MAC table, and storage owned by the switch.
+
+Implementation task:
+
+Implement `switch_free` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `sw == NULL`, return immediately.
@@ -366,6 +435,26 @@ Implementation order:
 Do not free `sw` again after this call.
 
 ### `switch_add_port`
+
+Purpose:
+
+Attach one interface as a switch port.
+
+Implementation task:
+
+Implement `switch_add_port` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -385,6 +474,26 @@ Implementation order:
 
 ### `switch_receive`
 
+Purpose:
+
+Process one Ethernet frame received on a switch port.
+
+Implementation task:
+
+Implement `switch_receive` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `sw == NULL`, return immediately.
@@ -393,8 +502,8 @@ Implementation order:
 - If `in_port` is down:
   - free `frame`
   - return
-- If the stripped Ethernet header is not readable at
-  `frame->data - ETH_HDR_LEN`:
+- Call `packet_validate_view(frame, ETH_HDR_LEN, 0)` before reading the stripped
+  Ethernet header. If it returns `-1`:
   - free `frame`
   - increment `in_port->rx_errors`
   - return
@@ -435,6 +544,26 @@ before calling `ethernet_send`.
 
 ### `switch_port_down`
 
+Purpose:
+
+Apply the switch-side state changes required when a port goes down.
+
+Implementation task:
+
+Implement `switch_port_down` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `sw == NULL`, return immediately.
@@ -443,6 +572,26 @@ Implementation order:
 - Flush MAC table entries pointing at that port.
 
 ### `switch_get_port_by_name`
+
+Purpose:
+
+Find a switch port with the supplied interface name.
+
+Implementation task:
+
+Implement `switch_get_port_by_name` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 

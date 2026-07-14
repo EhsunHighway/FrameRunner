@@ -1,7 +1,7 @@
 # Module 21 - Static Route
 
 **Files:** `src/routing/static_route.c`, `src/routing/static_route.h`
-**Depends on:** `router`, `route_table`, `interface`
+**Depends on:** `router`, `route_table`, `interface`, `ip_utils`
 
 ## Concepts First
 
@@ -275,6 +275,26 @@ Behavior summary:
 Initialize a caller-owned `StaticRouteTable` so it contains no configured static
 routes.
 
+Purpose:
+
+Initialize the static-route collection to an empty usable state.
+
+Implementation task:
+
+Implement `static_route_init` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `table == NULL`, return immediately.
@@ -294,6 +314,26 @@ Behavior summary:
 Add a new configured static route or update the existing configured route for
 the same normalized prefix and prefix length. A successful add/update also
 installs the route into the Router route table as `ROUTE_PROTO_STATIC`.
+
+Purpose:
+
+Add one validated static-route configuration entry.
+
+Implementation task:
+
+Implement `static_route_add` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -339,6 +379,26 @@ Remove one configured static route identified by normalized prefix and prefix
 length. If the route was installed, also remove the matching
 `ROUTE_PROTO_STATIC` route from the Router route table.
 
+Purpose:
+
+Delete the static-route entry matching the supplied prefix and prefix length.
+
+Implementation task:
+
+Implement `static_route_delete` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `table == NULL || router == NULL`, return `-1`.
@@ -371,6 +431,26 @@ Install every valid configured static route into the Router route table. This
 is useful after a Router route table is reinitialized or after static route
 configuration is loaded before the Router is ready.
 
+Purpose:
+
+Install every valid configured static route into the router route table.
+
+Implementation task:
+
+Implement `static_route_apply` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `table == NULL || router == NULL`, return `-1`.
@@ -399,6 +479,26 @@ Behavior summary:
 
 Remove every configured static route from the static-route table. For each
 installed entry, ask Router to delete the matching `ROUTE_PROTO_STATIC` route.
+
+Purpose:
+
+Remove every configured static route.
+
+Implementation task:
+
+Implement `static_route_flush` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 

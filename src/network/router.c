@@ -128,12 +128,6 @@ int     router_receive(Router    *router,
         return -1;
     }
 
-    if (!pkt->data || pkt->len < IP_HDR_LEN) {
-        packet_free(pkt);
-        iface->rx_errors++;
-        return -1;
-    }
-
     if (ip_validate_header(pkt) != 0) {
         packet_free(pkt);
         iface->rx_errors++;

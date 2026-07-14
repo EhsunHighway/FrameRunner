@@ -459,17 +459,6 @@ should call the same `isis_receive` after identifying IS-IS ethertype/SNAP.
 
 ## Function Behavior
 
-Function behavior is an implementation contract. For simple functions, the
-`Implementation order` list is written in execution order unless the text
-explicitly says order does not matter. For non-trivial functions, especially
-functions with ownership transfer, queueing, lookup, selection, state-machine
-transitions, or packet forwarding, split the section into behavior summary,
-implementation order, and postconditions so the coder does not have to guess.
-Do not mix final-state facts into `Implementation order`; put them under
-`Postconditions` unless the implementation must check that fact at that exact
-point in control flow.
-
-
 ### `isis_init`
 
 Behavior summary:
@@ -477,6 +466,26 @@ Behavior summary:
 `isis_init` prepares caller-owned IS-IS state for one router, derives local
 identity from NET when available, and schedules initial IS-IS timers when a
 scheduler exists.
+
+Purpose:
+
+Initialize the supplied isis state to its documented empty or default state.
+
+Implementation task:
+
+Implement `isis_init` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -504,6 +513,26 @@ necessarily by `isis_init`.
 
 ### `isis_enable_iface`
 
+Purpose:
+
+Enable one interface in the IS-IS state with the supplied metric.
+
+Implementation task:
+
+Implement `isis_enable_iface` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `state == NULL || iface == NULL`, return `-1`.
@@ -521,14 +550,38 @@ IS-IS does not take ownership of the interface.
 
 ### `isis_receive`
 
+Purpose:
+
+Validate and process an IS-IS packet delivered by IP.
+
+Implementation task:
+
+Implement `isis_receive` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `iface == NULL`, return `-1`.
 - If `pkt == NULL`, increment `iface->rx_errors` and return `-1`.
 - If `ctx == NULL`, free packet, increment `rx_errors`, return `-1`.
 - Cast context to `IsisState *`.
-- If packet is shorter than `IsisHeader`, free packet, increment `rx_errors`,
-  return `-1`.
+- For the first milestone's IP-delivered path, call
+  `packet_validate_view(pkt, IP_HDR_LEN, sizeof(IsisHeader))`. If it returns
+  `-1`, free packet, increment `iface->rx_errors`, and return `-1`.
+- Do not reuse that exact headroom argument for a future L2-native path. After
+  Ethernet strips its header, that path must instead call
+  `packet_validate_view(pkt, ETH_HDR_LEN, sizeof(IsisHeader))`.
 - Validate discriminator, version fields, header length, and PDU type.
 - Dispatch by PDU:
   - IIH: refresh or create neighbor
@@ -537,6 +590,26 @@ Implementation order:
 - Free packet before returning.
 
 ### `isis_send_iih`
+
+Purpose:
+
+Construct and send the requested iih.
+
+Implementation task:
+
+Implement `isis_send_iih` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 
@@ -555,6 +628,26 @@ Implementation order:
 
 ### `isis_generate_lsp`
 
+Purpose:
+
+Generate or refresh this router’s local IS-IS link-state PDU.
+
+Implementation task:
+
+Implement `isis_generate_lsp` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `state == NULL`, return `-1`.
@@ -567,6 +660,26 @@ Implementation order:
 
 ### `isis_flood_lsp`
 
+Purpose:
+
+Flood one IS-IS link-state PDU through every eligible enabled interface.
+
+Implementation task:
+
+Implement `isis_flood_lsp` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
+
 Implementation order:
 
 - If `state == NULL || lsp == NULL`, return `-1`.
@@ -576,6 +689,26 @@ Implementation order:
 - Return `0` if all required sends succeed, else `-1`.
 
 ### `isis_run_spf`
+
+Purpose:
+
+Run the spf operation to its documented stopping point.
+
+Implementation task:
+
+Implement `isis_run_spf` using the supplied arguments and the module state identified by this specification. The ordered steps below define the required validation, state changes, ownership actions, and failure exits; do not infer additional responsibilities from the function name.
+
+Inputs and existing state:
+
+Use the parameters in the declared public or internal signature and only the existing objects reachable through those parameters, except where the ordered steps explicitly identify module-owned state.
+
+Result:
+
+Produce the return value, state transition, output, and ownership outcome stated by the ordered steps and postconditions below.
+
+Required behavior:
+
+Follow every validation, capacity, ordering, byte-order, and ownership rule in this function section. A failure path must stop at the point stated below and must not perform later success-path actions.
 
 Implementation order:
 

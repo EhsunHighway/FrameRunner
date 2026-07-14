@@ -119,21 +119,7 @@ int  udp_receive(Interface *iface,
         iface->rx_errors++;
         return -1;
     }
-    if (pkt->len < UDP_HDR_LEN) {
-        packet_free(pkt);
-        iface->rx_errors++;
-        return -1;
-    }
-
-    if (pkt->head == NULL || pkt->data == NULL) {
-        packet_free(pkt);
-        iface->rx_errors++;
-        return -1;
-    }
-
-    uint8_t *end = pkt->head + PKT_HEADROOM + pkt->capacity;
-    if ((pkt->data < pkt->head + IP_HDR_LEN) ||
-        (pkt->data >= end) || (pkt->len > (size_t)(end - pkt->data))) {
+    if (packet_validate_view(pkt, IP_HDR_LEN, UDP_HDR_LEN) != 0) {
         packet_free(pkt);
         iface->rx_errors++;
         return -1;

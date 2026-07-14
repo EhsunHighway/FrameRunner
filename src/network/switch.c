@@ -113,7 +113,7 @@ void       switch_receive(Switch    *sw,
         return;
     }
     
-    if (!(frame->data >= frame->head + ETH_HDR_LEN)) {
+    if (packet_validate_view(frame, ETH_HDR_LEN, 0) != 0) {
         packet_free(frame);
         in_port->rx_errors++;
         return;
