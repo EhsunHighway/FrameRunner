@@ -412,6 +412,37 @@ Implementation order:
 The current implementation does not check whether `src` itself is up. It checks
 the link and the destination interface.
 
+## Animation And Trace Integration
+
+`link_transmit` is the authoritative boundary for movement between two
+interfaces. When the scheduler has a trace log, it emits semantic records in
+this order without changing existing transmission results:
+
+1. After validating link, packet, source, scheduler, link state, and
+   destination interface, create the packet clone as currently specified.
+2. After the receive event is successfully scheduled, append
+   `TRACE_PACKET_TX` with:
+   - timestamp = supplied `now`
+   - packet identity from the scheduled clone
+   - copied source/destination device and interface names
+   - departure time in `timestamp`
+   - scheduled arrival time in `end_timestamp`
+   - visible packet length and bounded snapshot
+3. The later receive path emits `TRACE_PACKET_RX` when delivery processing
+   begins.
+4. If the link or destination interface is down, append
+   `TRACE_PACKET_DROPPED` when tracing is available, using the original packet
+   identity and a stable reason. Return the same failure result as before.
+5. Packet-clone, event-allocation, scheduler-insertion, or trace-append failure
+   must obey existing packet/event ownership. Trace append failure alone does
+   not convert a successful transmission into failure.
+
+The animation derives movement from source/destination endpoints and departure
+and arrival simulated times. `Link` stores no visual coordinates.
+
+The trace-record schema is the source of truth; animation must not parse
+human-readable summaries to recover transmission timing.
+
 ## Flow Charts
 
 ### Transmit Across Link

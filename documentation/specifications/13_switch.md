@@ -599,6 +599,30 @@ Implementation order:
 - If `name == NULL`, return `NULL`.
 - Return `device_get_interface_by_name((Device *)sw, name)`.
 
+## Trace And Animation Integration
+
+`switch_create` sets `sw->base.type = DEVICE_TYPE_SWITCH` before publishing the
+switch.
+
+For each accepted frame, emit records in forwarding-decision order:
+
+1. `TRACE_PACKET_RX` identifies ingress switch and port before frame mutation.
+2. After source learning succeeds, emit `TRACE_MAC_LEARN` with source MAC and
+   learned ingress port.
+3. Emit `TRACE_MAC_LOOKUP` with destination MAC and hit/miss result.
+4. For a usable unicast hit, emit one `TRACE_SWITCH_FORWARD` naming ingress and
+   selected egress before sending the clone.
+5. For broadcast, multicast, unknown unicast, or unusable learned egress, emit
+   one `TRACE_SWITCH_FLOOD` summary followed by one forwarding record per
+   attempted egress.
+6. Clones preserve trace identity automatically through `packet_clone`.
+7. Emit a drop record for invalid ingress, malformed frame, or no usable
+   output according to existing counter/return behavior.
+
+MAC aging may emit `TRACE_TIMER_FIRED` and one `TRACE_PROTOCOL_STATE_CHANGED`
+summary identifying the number of removed entries. Trace failure does not stop
+aging or forwarding.
+
 ## Flow Charts
 
 ### Create Switch

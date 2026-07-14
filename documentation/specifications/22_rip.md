@@ -953,6 +953,24 @@ Implementation order:
 This handler is also a periodic scan. The event only means "run the GC scan";
 `e->data` does not identify a route.
 
+## Trace And Animation Integration
+
+RIP control packets begin a new trace for each independently generated request
+or periodic/triggered response. Clones sent on multiple interfaces preserve
+their trace relationship.
+
+Emit:
+
+- `TRACE_TIMER_FIRED` for update, timeout, and garbage-collection callbacks
+- one protocol record for request/response creation and validated receive
+- `TRACE_ROUTE_CHANGED` for each route add, metric replacement, timeout, and
+  removal, including destination, metric, and learned interface
+- one summary after a triggered or periodic update is scheduled
+- a drop record for malformed or policy-rejected RIP messages
+
+Tracing does not change timer rescheduling, route freshness, split-horizon
+behavior, packet ownership, or failure propagation.
+
 ## Flow Charts
 
 ### Initialization

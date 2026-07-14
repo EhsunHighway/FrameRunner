@@ -1,484 +1,242 @@
 # Networking Simulator — Architecture
 
-## 1. High-Level System Overview
+## 1. Runtime Model
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        networking_simulator                         │
-│                                                                     │
-│  ┌──────────┐    ┌──────────────────┐    ┌──────────────────────┐   │
-│  │   CLI    │───>│  Simulation Core │───>│    Display Engine    │   │
-│  │  (REPL)  │    │  (Event Engine)  │    │  (ASCII Renderer)    │   │
-│  └──────────┘    └────────┬─────────┘    └──────────────────────┘   │
-│                           │                                         │
-│              ┌────────────┼────────────┐                            │
-│              ▼            ▼            ▼                            │
-│       ┌────────────┐ ┌─────────┐ ┌──────────┐                       │
-│       │  Network   │ │Protocol │ │ Routing  │                       │
-│       │  Layer     │ │Modules  │ │  Engine  │                       │
-│       │ (Topology, │ │(ETH,ARP,│ │(Tables,  │                       │
-│       │  Devices,  │ │IP,ICMP, │ │ LPM,     │                       │
-│       │  Links)    │ │TCP,UDP) │ │ RIP)     │                       │
-│       └────────────┘ └─────────┘ └──────────┘                       │
-└─────────────────────────────────────────────────────────────────────┘
-```
+The simulator uses one deterministic discrete-event scheduler. Devices do not
+run in operating-system threads and do not own separate event queues.
 
----
+Many devices can appear active at the same simulated time because their events
+can share a timestamp. The scheduler resolves that logical concurrency by
+processing events in `(timestamp, sequence)` order. `sequence` is assigned when
+an event is scheduled and makes equal-time behavior repeatable.
 
-## 2. Module Breakdown
+Periodic RIP and OSPF timers mean the event queue may never become empty.
+Interactive runs are therefore bounded by one event, an event count, or a
+simulated-time limit.
 
-### 2.1 CLI Module (`src/cli/`)
-
-```
-┌────────────────────────────────────────────────────┐
-│                    CLI Module                      │
-│                                                    │
-│  cli_run()          ← main REPL loop               │
-│  cli_parse()        ← tokenize input               │
-│  cli_dispatch()     ← map command → handler        │
-│                                                    │
-│  Commands:                                         │
-│  ┌──────────────────────────────────────────────┐  │
-│  │ cmd_send()       → inject send event         │  │
-│  │ cmd_step()       → advance one event         │  │
-│  │ cmd_run()        → drain event queue         │  │
-│  │ cmd_topology()   → show ASCII topology       │  │
-│  │ cmd_show_route() → print routing table       │  │
-│  │ cmd_show_arp()   → print ARP cache           │  │
-│  │ cmd_show_packet()→ print packet journey      │  │
-│  │ cmd_inject()     → inject error event        │  │
-│  │ cmd_load()       → load topology file        │  │
-│  │ cmd_reset()      → clear simulation          │  │
-│  └──────────────────────────────────────────────┘  │
-└────────────────────────────────────────────────────┘
-         │
-         ▼ emits events into
-┌────────────────────┐
-│    Event Queue     │
-└────────────────────┘
+```text
+topology file
+     |
+     v
+TopologyConfig ----constructs atomically----> Simulator
+                                               |
+user command --> CLI --> bounded run --> Scheduler
+                                               |
+                                               v
+                         Network / Protocol / Routing modules
+                                               |
+                                               v
+                                            TraceLog
+                                               |
+                         +---------------------+------------------+
+                         |                     |                  |
+                  TopologyLayout        HeaderView          EventLog
+                         \_____________________|_________________/
+                                               |
+                                          Animation
 ```
 
----
+## 2. Ownership
 
-### 2.2 Simulation Core / Event Engine (`src/engine/`)
+The CLI owns the active `Simulator` and `AnimationState`. It borrows its input
+and output streams.
 
-```
-┌────────────────────────────────────────────────────────────────┐
-│                      Simulation Engine                         │
-│                                                                │
-│  simulator_step()   ← pop one event, dispatch it               │
-│  simulator_run()    ← loop until queue empty or paused         │
-│  simulator_reset()  ← free all state                           │
-│                                                                │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │                     Event Queue                          │  │
-│  │                                                          │  │
-│  │  event_queue_push(event)   ← ordered by timestamp        │  │
-│  │  event_queue_pop()         ← returns next event          │  │
-│  │  event_queue_peek()        ← inspect without removing    │  │
-│  │                                                          │  │
-│  │  Internal: min-heap or sorted linked list                │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│                                                                │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │                   Event Dispatcher                       │  │
-│  │                                                          │  │
-│  │  dispatch(event) → routes to correct device handler      │  │
-│  │                                                          │  │
-│  │  EVT_PACKET_SEND     → device_send_handler()             │  │
-│  │  EVT_PACKET_RECEIVED → device_recv_handler()             │  │
-│  │  EVT_ARP_REQUEST     → arp_request_handler()             │  │
-│  │  EVT_ARP_REPLY       → arp_reply_handler()               │  │
-│  │  EVT_ROUTING_UPDATE  → rip_update_handler()              │  │
-│  │  EVT_LINK_DOWN       → link_down_handler()               │  │
-│  │  EVT_TIMER_EXPIRED   → timer_handler()                   │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│                                                                │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │                   Event Log                              │  │
-│  │  Append-only list of all processed events                │  │
-│  │  Used by display engine for history view                 │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────────────┘
-```
+The simulator owns:
 
----
+- the topology and all devices reachable from it
+- the scheduler and queued events
+- the persistent trace log
+- protocol state whose module specification assigns ownership to the simulator
+  or to a simulator-owned device
 
-### 2.3 Network Layer (`src/network/`)
+The animation state borrows the active simulator, trace, topology, and output
+stream. It owns only display state such as focus mode, playback rate, frame
+cursor, and temporary active-packet visuals.
 
-```
-┌───────────────────────────────────────────────────────────────┐
-│                       Network Layer                           │
-│                                                               │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │  Topology  (topology.c/h)                               │  │
-│  │                                                         │  │
-│  │  topology_load(file)    ← parse config                  │  │
-│  │  topology_add_device()  ← add host/switch/router        │  │
-│  │  topology_add_link()    ← connect two interfaces        │  │
-│  │  topology_find_device() ← lookup by name or IP          │  │
-│  │  topology_render()      ← emit to display engine        │  │
-│  └─────────────────────────────────────────────────────────┘  │
-│                                                               │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │  Device  (device.c/h)                                   │  │
-│  │                                                         │  │
-│  │  device_create(name, type)                              │  │
-│  │  device_add_interface(device, mac, ip, prefix_len)      │  │
-│  │  device_recv(device, packet, iface) ← entry point       │  │
-│  │  device_send(device, packet, iface) ← entry point       │  │
-│  │                                                         │  │
-│  │  DeviceType: HOST | SWITCH | ROUTER                     │  │
-│  └─────────────────────────────────────────────────────────┘  │
-│                                                               │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │  Interface  (interface.c/h)                             │  │
-│  │                                                         │  │
-│  │  uint8_t  mac[6]                                        │  │
-│  │  uint32_t ip_addr                                       │  │
-│  │  uint8_t  prefix_len                                    │  │
-│  │  Link    *link           ← connected link               │  │
-│  │  char     name[16]       ← e.g. "eth0"                  │  │
-│  └─────────────────────────────────────────────────────────┘  │
-│                                                               │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │  Link  (link.c/h)                                       │  │
-│  │                                                         │  │
-│  │  Interface *end_a, *end_b                               │  │
-│  │  uint32_t   bandwidth_mbps                              │  │
-│  │  uint32_t   delay_ms                                    │  │
-│  │  float      loss_rate        ← 0.0 to 1.0               │  │
-│  │  bool       up                                          │  │
-│  │                                                         │  │
-│  │  link_transmit(link, packet, src_iface)                 │  │
-│  │    → schedules EVT_PACKET_RECEIVED at (now + delay)     │  │
-│  └─────────────────────────────────────────────────────────┘  │
-│                                                               │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │  Packet Buffer  (packet.c/h)                            │  │
-│  │                                                         │  │
-│  │  packet_create(capacity)                                │  │
-│  │  packet_prepend(packet, header, len)  ← encapsulate     │  │
-│  │  packet_strip(packet, len)            ← decapsulate     │  │
-│  │  packet_clone(packet)                                   │  │
-│  │  packet_free(packet)                                    │  │
-│  │  packet_checksum(data, len)           ← RFC 1071        │  │
-│  └─────────────────────────────────────────────────────────┘  │
-└───────────────────────────────────────────────────────────────┘
-```
+Trace records own copies of all information needed after an event or packet is
+freed. They must not retain pointers to live packets, stack buffers, device
+names, interfaces, protocol headers, or LSDB entries.
 
----
+`load <file>` first builds a complete replacement simulator away from the
+active one. Only after parsing, reference resolution, device construction,
+link construction, route installation, and animation creation all succeed may
+the CLI free the old objects and install the replacement.
 
-### 2.4 Protocol Modules (`src/protocols/`)
+## 3. Module Boundaries
 
-```
-┌───────────────────────────────────────────────────────────────┐
-│                    Protocol Modules                           │
-│                                                               │
-│  Each module exposes:                                         │
-│    proto_build_header(packet, params) → prepend header        │
-│    proto_parse_header(packet)         → read + strip header   │
-│    proto_handle_event(event)          → event handler         │
-│    proto_describe(header_ptr)         → return display info   │
-│                                                               │
-│  ┌─────────────────┐  ┌─────────────────┐                     │
-│  │  ethernet.c/h   │  │    arp.c/h      │                     │
-│  │                 │  │                 │                     │
-│  │  ETH header     │  │  ARP request    │                     │
-│  │  EtherType      │  │  ARP reply      │                     │
-│  │  CRC check      │  │  ARP table      │                     │
-│  │  MAC lookup     │  │  Gratuitous ARP │                     │
-│  └─────────────────┘  └─────────────────┘                     │
-│                                                               │
-│  ┌─────────────────┐  ┌─────────────────┐                     │
-│  │    ip.c/h       │  │   icmp.c/h      │                     │
-│  │                 │  │                 │                     │
-│  │  IPv4 header    │  │  Echo req/reply │                     │
-│  │  TTL decrement  │  │  TTL exceeded   │                     │ 
-│  │  Checksum       │  │  Dest unreach   │                     │ 
-│  │  Fragmentation  │  │                 │                     │
-│  │  (display only) │  │                 │                     │
-│  └─────────────────┘  └─────────────────┘                     │
-│                                                               │
-│  ┌─────────────────┐  ┌─────────────────┐                     │
-│  │    tcp.c/h      │  │    udp.c/h      │                     │
-│  │                 │  │                 │                     │
-│  │  TCP header     │  │  UDP header     │                     │
-│  │  3-way handshake│  │  Stateless send │                     │
-│  │  Seq/Ack nums   │  │  Checksum       │                     │
-│  │  Flags (SYN/ACK)│  │                 │                     │
-│  └─────────────────┘  └─────────────────┘                     │
-│                                                               │
-│  ┌─────────────────┐                                          │
-│  │    rip.c/h      │  ← Phase 1 dynamic routing               │
-│  │                 │                                          │
-│  │  RIP message    │                                          │
-│  │  Distance vector│                                          │
-│  │  Periodic timer │                                          │
-│  │  Convergence    │                                          │
-│  └─────────────────┘                                          │
-│                                                               │
-│  ┌─────────────────┐                                          │
-│  │  [ospf.c/h]     │  ← Phase 2 module (stub registered)      │
-│  │  [bgp.c/h]      │  ← Phase 3 module                        │
-│  └─────────────────┘                                          │
-└───────────────────────────────────────────────────────────────┘
+### Configuration (`src/config/`)
+
+`topology_config.c/h` owns text parsing, validation, reference resolution, and
+construction order. It accepts network facts: devices, interfaces, links, and
+static routes.
+
+It does not:
+
+- store the parsed file as the runtime topology
+- add visual coordinates to configuration records
+- render output
+- partially modify the active simulator on failure
+
+### Simulation Engine (`src/engine/`)
+
+`event.c/h` represents scheduled work. `scheduler.c/h` orders and dispatches
+that work. `simulator.c/h` owns the runtime objects and exposes step and bounded
+run operations. `trace.c/h` stores persistent observations.
+
+An event and a trace record are different objects:
+
+- an event says what work must execute later
+- a trace record says what was scheduled, started, finished, sent, received,
+  selected, changed, delivered, or dropped
+
+A single event can produce several semantic trace records while it traverses
+device and protocol code.
+
+### Network (`src/network/`)
+
+Packet, interface, link, device, topology, host, switch, and router modules own
+runtime network state. `DeviceType` identifies the concrete device category so
+the display and configuration layers do not infer it from handler pointers or
+struct layout.
+
+Topology stores connectivity only. It does not parse files and does not store
+display positions.
+
+Packet identity has three roles:
+
+- `id` identifies one allocated packet object
+- `trace_id` groups every packet in one causal journey
+- `parent_id` identifies the packet that caused a clone, reply, error, or
+  control packet; zero means there is no parent
+
+### Protocol And Routing Modules
+
+Protocol and routing modules continue to perform real packet parsing and state
+changes. Their animation responsibility is limited to emitting semantic trace
+records at the exact points defined by their module specifications. They do not
+print frames or control animation timing.
+
+Examples of semantic actions are ARP resolution, MAC learning, IPv4 route
+selection, TTL drop, ICMP reply generation, TCP state change, RIP update, OSPF
+neighbor transition, SPF run, and route installation.
+
+### Display (`src/display/`)
+
+The display layer has four separate jobs:
+
+| Module | Responsibility |
+|---|---|
+| `topology_view.c/h` | Print a static textual topology report |
+| `topology_layout.c/h` | Calculate deterministic display-only node positions |
+| `header_view.c/h` | Decode and print bounded packet snapshots from trace records |
+| `event_log.c/h` | Print recent records or records selected by packet/trace ID |
+| `animation.c/h` | Combine topology, layout, trace time intervals, focus, and terminal frames |
+
+Automatic layout uses stable topology order and temporary display records. The
+user does not provide positions, and network structs remain independent of
+terminal dimensions.
+
+### CLI (`src/cli/`)
+
+`cli.c/h` owns only CLI state, registration, longest-prefix dispatch, the REPL,
+and atomic replacement of the active simulator/animation pair.
+`commands.c/h` separately owns the built-in command names and handlers. It
+translates validated arguments into calls to topology configuration,
+simulation, animation, display, network, routing, and protocol public APIs.
+
+Neither module inspects protocol-private structs or mutates scheduler arrays
+directly. Built-ins are registered after CLI-core creation, so the core remains
+usable with a custom command set in tests or another frontend.
+
+The CLI supports:
+
+- atomic topology loading
+- topology, interface, ARP, and route inspection
+- event stepping and bounded runs
+- animation ticks and playback speed
+- focus by device, packet ID, or trace ID
+- persistent packet and trace inspection
+
+## 4. Trace And Animation Flow
+
+For a link transmission, the sender emits a record whose `timestamp` is the
+simulated departure time and whose `end_timestamp` is the scheduled arrival
+time. The animation can therefore interpolate a packet between the two
+automatically calculated endpoint positions.
+
+```text
+packet handed to link
+        |
+        +--> trace departure and scheduled arrival interval
+        |
+        +--> scheduler queues receive event
+                       |
+                       v
+               destination receives
+                       |
+                       +--> protocol/device decision records
 ```
 
----
+Several transmission intervals may overlap. `AnimationState` scans the
+relevant trace interval at the current frame time and creates one temporary
+visual for every matching in-flight packet; it never assumes only one packet
+is moving.
 
-### 2.5 Routing Engine (`src/routing/`)
+Animation time and simulator time are distinct:
 
-```
-┌───────────────────────────────────────────────────────────────┐
-│                      Routing Engine                           │
-│                                                               │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │  Route Table  (route_table.c/h)                         │  │
-│  │                                                         │  │
-│  │  route_table_add(prefix, prefix_len, nexthop, iface,    │  │
-│  │                  metric, proto)                         │  │
-│  │  route_table_remove(prefix, prefix_len)                 │  │
-│  │  route_table_lookup(dst_ip)  ← Longest Prefix Match     │  │
-│  │  route_table_dump(device)    ← print to display         │  │
-│  │                                                         │  │
-│  │  Internal: sorted array or trie                         │  │
-│  └─────────────────────────────────────────────────────────┘  │
-│                                                               │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │  Static Route  (static_route.c/h)                       │  │
-│  │                                                         │  │
-│  │  static_route_init(table)                               │  │
-│  │  static_route_add(table, router, prefix, prefix_len,    │  │
-│  │                   next_hop, iface, metric)              │  │
-│  │  static_route_delete(table, router, prefix, prefix_len) │  │
-│  │  static_route_apply(table, router)                      │  │
-│  │  static_route_flush(table, router)                      │  │
-│  └─────────────────────────────────────────────────────────┘  │
-└───────────────────────────────────────────────────────────────┘
-```
+- simulator time changes only when scheduler events execute
+- animation frame time moves through already recorded intervals according to
+  playback speed
 
----
+This separation permits pausing, focusing, and replaying recorded activity
+without changing protocol state.
 
-### 2.6 Display Engine (`src/display/`)
+## 5. Dependency Direction
 
-```
-┌───────────────────────────────────────────────────────────────┐
-│                      Display Engine                           │
-│                                                               │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │  Topology View  (topology_view.c/h)                     │  │
-│  │                                                         │  │
-│  │  topology_view_render(topology)                         │  │
-│  │                                                         │  │
-│  │  Example output:                                        │  │
-│  │    [host_a]──eth0──[sw1]──eth1──[router1]──[sw2]──[host_b] │
-│  └─────────────────────────────────────────────────────────┘  │
-│                                                               │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │  Header View  (header_view.c/h)                         │  │
-│  │                                                         │  │
-│  │  header_view_render(proto_type, header_ptr)             │  │
-│  │                                                         │  │
-│  │  Example output:                                        │  │
-│  │  ┌────────────────────────────────┐                     │  │
-│  │  │ IPv4 Header                    │                     │  │
-│  │  │  Version : 4                   │                     │  │
-│  │  │  IHL     : 5 (20 bytes)        │                     │  │
-│  │  │  TTL     : 64                  │                     │  │
-│  │  │  Protocol: 6 (TCP)             │                     │  │
-│  │  │  Src IP  : 192.168.1.2         │                     │  │
-│  │  │  Dst IP  : 192.168.2.5         │                     │  │
-│  │  │  Checksum: 0x1A2B [valid]      │                     │  │
-│  │  └────────────────────────────────┘                     │  │
-│  └─────────────────────────────────────────────────────────┘  │
-│                                                               │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │  Event Log  (event_log.c/h)                             │  │
-│  │                                                         │  │
-│  │  event_log_append(event)                                │  │
-│  │  event_log_dump(count)     ← show last N events         │  │
-│  │                                                         │  │
-│  │  Example output:                                        │  │
-│  │  [t=0us]  host_a → sw1     EVT_PACKET_SEND              │  │
-│  │  [t=1us]  sw1    → router1 EVT_PACKET_RECEIVED          │  │
-│  │  [t=2us]  router1          EVT_ARP_REQUEST              │  │
-│  └─────────────────────────────────────────────────────────┘  │
-└───────────────────────────────────────────────────────────────┘
+```text
+packet -> event -> scheduler -> simulator
+   |                    |           |
+   +--------------------+---------> trace
+
+interface -> link -> device -> topology
+                    |         |
+                    +-> host / switch / router
+
+ethernet / arp / ip / icmp / udp / tcp
+routing table / static route / rip / ospf
+                    |
+                    +---------------------> trace API
+
+topology_config -> simulator + topology + device constructors + routes
+topology_layout -> topology
+topology_view   -> topology
+header_view     -> trace snapshot
+event_log       -> trace
+animation       -> trace + topology_layout + display helpers
+cli core        -> simulator + animation
+cli commands    -> cli core + topology_config + simulator + animation
+                   + display helpers + owning network/protocol APIs
 ```
 
----
+Lower-level modules do not depend on CLI or animation. Core and protocol
+modules may depend only on the narrow trace-emission API needed to describe an
+action; they do not depend on display formatting.
 
-## 3. Data Flow — Packet Send (Host A → Host B)
+## 6. End-to-End Runnable Path
 
-```
-User: "send host_a host_b tcp"
-         │
-         ▼
-    CLI Module
-    cmd_send()
-         │ creates EVT_PACKET_SEND
-         ▼
-    Event Queue
-         │ simulator_step()
-         ▼
-    host_a device handler
-         │
-         ├─ [Transport] tcp_build_header(packet, src_port, dst_port, ...)
-         │    → packet_prepend(packet, tcp_hdr, sizeof(TCPHeader))
-         │    → display: TCP header box
-         │
-         ├─ [Network] ip_build_header(packet, src_ip, dst_ip, ...)
-         │    → packet_prepend(packet, ip_hdr, sizeof(IPHeader))
-         │    → display: IP header box
-         │
-         ├─ [ARP check] Does host_a know dst MAC?
-         │    NO → push EVT_ARP_REQUEST, suspend packet
-         │    YES ↓
-         │
-         ├─ [Data Link] eth_build_header(packet, src_mac, dst_mac, ...)
-         │    → packet_prepend(packet, eth_hdr, sizeof(EtherHeader))
-         │    → display: Ethernet header box
-         │
-         └─ [Physical] link_transmit(link, packet)
-              → push EVT_PACKET_RECEIVED at (now + link.delay_ms)
-                        │
-                        ▼
-               sw1 device handler
-                        │
-                  [Data Link] eth_parse_header(packet)
-                  MAC table lookup → forward out port
-                  eth_build_header (same headers pass through)
-                        │
-                        ▼
-               router1 device handler
-                        │
-                  [Data Link] eth_parse_header, strip header
-                  [Network]   ip_parse_header
-                              TTL--
-                              route_table_lookup(dst_ip)
-                              → next hop found: sw2/eth0
-                  [Data Link] eth_build_header (new MACs)
-                        │
-                        ▼
-               sw2 → host_b device handler
-                        │
-                  [Data Link] eth_parse_header, strip
-                  [Network]   ip_parse_header, strip
-                  [Transport] tcp_parse_header, strip
-                  Payload delivered → display: "Data received"
-```
+The first complete runnable path is:
 
----
+1. `main` creates an initial simulator and CLI.
+2. The user loads a topology file.
+3. The configuration module constructs a replacement simulator atomically.
+4. The layout module calculates terminal positions from the new topology.
+5. A user command injects traffic such as ping.
+6. Scheduler events drive host, switch, router, protocol, and link behavior.
+7. Those modules append persistent trace records.
+8. Step, tick, or bounded-run commands render overlapping packet movement and
+   the associated semantic decisions.
+9. Focus commands let the user follow all traffic, one device, one packet
+   object, or the complete causal trace.
 
-## 4. Event Type Hierarchy
-
-```
-EventType
-├── Packet Events
-│   ├── EVT_PACKET_SEND        (user-triggered or protocol-triggered)
-│   └── EVT_PACKET_RECEIVED    (scheduled by link_transmit)
-│
-├── ARP Events
-│   ├── EVT_ARP_REQUEST
-│   └── EVT_ARP_REPLY
-│
-├── Routing Events
-│   ├── EVT_ROUTING_UPDATE     (RIP/OSPF periodic)
-│   └── EVT_ROUTE_ADDED
-│
-├── Link Events
-│   ├── EVT_LINK_UP
-│   └── EVT_LINK_DOWN
-│
-├── Timer Events
-│   └── EVT_TIMER_EXPIRED      (used by RIP hello, TCP retransmit)
-│
-└── Control Events
-    ├── EVT_RENDER             (trigger display refresh)
-    └── EVT_RESET
-```
-
----
-
-## 5. Protocol Plugin Interface
-
-Every protocol module must implement this interface to integrate with the engine:
-
-```c
-typedef struct ProtocolPlugin {
-    const char  *name;                     // e.g. "rip", "ospf"
-    EventType    handled_events[8];        // events this plugin handles
-    int          event_count;
-
-    // Called by dispatcher for each relevant event
-    void (*handle_event)(Event *event);
-
-    // Called by display engine to render headers
-    void (*render_header)(void *header_ptr, char *buf, size_t buflen);
-} ProtocolPlugin;
-
-// Register a plugin at startup
-void engine_register_plugin(ProtocolPlugin *plugin);
-```
-
-Adding BGP in Phase 3 = implement `ProtocolPlugin` in `bgp.c`, register it in `main.c`. No other files change.
-
----
-
-## 6. Phase 2: Per-Device Threads
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│  Each Device Thread (Phase 2)                                    │
-│                                                                  │
-│  ┌────────────┐   push event    ┌──────────────────────────────┐ │
-│  │  External  │ ─────────────>  │  Device Event Queue          │ │
-│  │  (other    │                 │  (mutex + cond_var protected)│ │
-│  │   devices) │                 └──────────────┬───────────────┘ │
-│  └────────────┘                               │                  │
-│                                               ▼                  │
-│                                    ┌──────────────────┐          │
-│                                    │  Device Thread   │          │
-│                                    │  event loop:     │          │
-│                                    │  while(running){ │          │
-│                                    │    wait(cond);   │          │
-│                                    │    e=queue_pop();│          │
-│                                    │    dispatch(e);  │          │
-│                                    │  }               │          │
-│                                    └──────────────────┘          │
-│                                                                  │
-│  Shared state (topology, routing tables) protected by rwlock     │
-└──────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 7. Source File Dependency Graph
-
-```
-main.c
-  ├── cli/cli.c
-  │     └── cli/commands.c
-  │           ├── engine/simulator.c
-  │           │     ├── engine/event.c
-  │           │     └── engine/scheduler.c
-  │           ├── network/topology.c
-  │           │     ├── network/device.c
-  │           │     │     ├── network/interface.c
-  │           │     │     └── network/link.c
-  │           │     └── network/packet.c
-  │           ├── protocols/ethernet.c
-  │           ├── protocols/arp.c
-  │           ├── protocols/ip.c
-  │           ├── protocols/icmp.c
-  │           ├── protocols/tcp.c
-  │           ├── protocols/udp.c
-  │           ├── protocols/rip.c
-  │           ├── routing/route_table.c
-  │           └── routing/static_route.c
-  └── display/
-        ├── topology_view.c
-        ├── header_view.c
-        └── event_log.c
-```
+BGP, IS-IS, NAT/PAT, a GUI, and per-device threads are not required for this
+path.

@@ -1736,6 +1736,27 @@ Implementation order:
 2. Cast `ctx` to `OspfState *state`.
 3. Call `ospf_run_spf(state)` once and ignore its return value.
 
+## Trace And Animation Integration
+
+Each independently generated OSPF Hello or LSU starts a control-packet trace;
+link-layer clones preserve it. Received records emit semantic state changes in
+the already specified implementation order:
+
+- `TRACE_TIMER_FIRED` for Hello, dead-neighbor, and delayed-SPF callbacks
+- Hello send/receive with router ID and interface
+- `TRACE_PROTOCOL_STATE_CHANGED` when a neighbor changes between DOWN, INIT,
+  and FULL
+- LSU receive/flood with advertising router, LSA identity, and sequence
+- LSDB insert or replacement after freshness checks
+- SPF start/finish summary
+- `TRACE_ROUTE_CHANGED` for OSPF route flush and each installed `/32` route
+- drop records for malformed, incompatible, unsupported, or failed
+  postprocessing paths according to existing error/drop classification
+
+Trace records use host-order decoded values and copy snapshots before packet
+cleanup. Trace append failure does not change neighbor state, LSDB state,
+flooding, SPF scheduling, route installation, or receive return codes.
+
 ## Flow Charts
 
 ### Initialization

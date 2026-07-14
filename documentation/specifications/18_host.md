@@ -560,6 +560,23 @@ ip_output(host->sim, src_ip, dst_ip, protocol, payload);
 Host must not choose the outgoing interface, perform ARP lookup, or build
 Ethernet frames itself.
 
+## Device Type And Trace Integration
+
+`host_create` sets `host->base.type = DEVICE_TYPE_HOST` before the host is
+published or added to a topology.
+
+Host-level trace records identify the user-facing endpoints of a causal
+operation:
+
+- start a new trace for a user-injected ping, UDP send, TCP connection, or raw
+  packet action
+- record selected source interface and gateway/next-hop decision
+- preserve the trace while ARP temporarily queues a packet
+- record successful local transport/application delivery
+
+Protocol modules remain responsible for header and protocol-specific records.
+Host does not duplicate them or depend on display code.
+
 ## Flow Charts
 
 ### Host Creation

@@ -2,8 +2,8 @@
 
 **Files:** `src/display/header_view.c`, `src/display/header_view.h`
 **Status:** Ready for implementation; current source files are empty
-**Depends on:** `packet`, `ethernet`, `arp`, `ip`, `icmp`, `tcp`, `udp`,
-`byte_order`
+**Depends on:** `packet`, `trace`, `ethernet`, `arp`, `ip`, `icmp`, `tcp`,
+`udp`, `byte_order`
 
 ## Concepts First
 
@@ -182,6 +182,8 @@ Helper functions borrow byte ranges. They do not allocate long-lived memory.
 
 ```c
 int header_view_print(const Packet *pkt, FILE *out);
+
+int header_view_print_snapshot(const TraceRecord *record, FILE *out);
 
 int header_view_print_eth(const uint8_t *data, size_t len, FILE *out);
 
@@ -475,6 +477,29 @@ Implementation order:
 - Otherwise return `HV_LAYER_UNKNOWN`.
 
 This helper is best-effort. Print functions still perform full validation.
+
+## Persistent Snapshot Display
+
+Live packet printing remains available while a caller owns a valid `Packet`.
+Animation and history use copied `TraceRecord` snapshots because live packets
+may already be stripped, cloned, or freed.
+
+`header_view_print_snapshot` implementation order:
+
+1. If `record == NULL || out == NULL`, return `-1`.
+2. Print packet ID, trace ID, parent ID, original visible length, captured
+   length, and layer.
+3. If `snapshot_length == 0`, print that no bytes were captured and return `0`.
+4. Validate `snapshot_length <= TRACE_PACKET_SNAPSHOT_MAX`.
+5. Decode from `record->snapshot` using the same non-destructive bounded helper
+   sequence as live packet display.
+6. When `snapshot_truncated != 0`, print an explicit truncation marker. Decode
+   only complete headers within captured bytes; never infer missing bytes from
+   `packet_length`.
+7. Return `0` after a complete supported display or `-1` after printing a
+   bounded truncation/invalid-snapshot explanation.
+
+The display does not parse `TraceRecord.summary` to reconstruct headers.
 
 ## Flow Charts
 

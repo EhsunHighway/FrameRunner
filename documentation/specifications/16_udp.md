@@ -564,6 +564,20 @@ Current implementation note: if `udp_len < pkt->len`, the code does not trim
 the trailing bytes visible to the callback. Tests should capture this current
 behavior if it remains intentional.
 
+## Trace And Animation Integration
+
+- After building the UDP header, emit `TRACE_HEADER_ADDED` with ports, UDP
+  length, packet identity, and source device/interface when known.
+- On receive, emit one validated UDP summary before stripping the header.
+- Emit `TRACE_TRANSPORT_DELIVERY` after a registered destination handler is
+  selected and before invoking it.
+- Emit `TRACE_PACKET_DROPPED` for malformed length, missing destination port,
+  or lower-layer output failure while preserving existing ICMP-error and
+  ownership behavior.
+- UDP replies created because of a received packet inherit its trace when the
+  calling application supplies that causal packet; independent application
+  sends start a new trace.
+
 ## Flow Charts
 
 ### Send

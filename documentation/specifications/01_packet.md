@@ -242,6 +242,8 @@ typedef struct Packet {
     size_t   len;
     size_t   capacity;
     uint32_t id;
+    uint32_t trace_id;
+    uint32_t parent_id;
     int      layer;
 } Packet;
 ```
@@ -254,7 +256,9 @@ Field meanings:
 | `data` | Start of the currently visible packet bytes. |
 | `len` | Number of visible bytes beginning at `data`. |
 | `capacity` | Payload/data capacity, excluding `PKT_HEADROOM`. |
-| `id` | Monotonically increasing packet identifier for tracing/debugging. |
+| `id` | Monotonically increasing identifier for this allocated packet object. |
+| `trace_id` | Stable causal-journey identifier shared by related packets and clones. |
+| `parent_id` | Immediate source packet object's `id`, or `0` when no parent is recorded. |
 | `layer` | Current OSI-ish display layer used by render/debug code. |
 
 ### Required Layout Invariant
@@ -616,6 +620,40 @@ Implementation order:
 - Assign no packet state.
 
 This is a debugging helper, not a verification target.
+
+## Trace Identity Integration
+
+Packet trace fields are network-observation metadata. They are not serialized
+into Ethernet, IP, or protocol headers and do not affect checksums or packet
+length.
+
+Add this public helper when trace identity is implemented:
+
+```c
+int packet_inherit_trace(Packet *child, const Packet *parent);
+```
+
+Required implementation order:
+
+- `packet_create` assigns a new nonzero `id`, sets `trace_id = id`, and sets
+  `parent_id = 0` after both allocations succeed.
+- `packet_clone` uses `packet_create`, copies visible bytes and layer, then
+  overwrites the clone's `trace_id` with the source `trace_id` and sets the
+  clone's `parent_id` to the source `id`. The clone keeps its newly allocated
+  unique `id`.
+- `packet_inherit_trace` returns `-1` for either null argument. Otherwise it
+  preserves the child's unique `id`, copies `parent->trace_id` into
+  `child->trace_id`, stores `parent->id` in `child->parent_id`, and returns `0`.
+- Protocol-generated replies and errors call `packet_inherit_trace` before the
+  child packet becomes visible to tracing or lower-layer output.
+- Packet prepend, strip, validation, checksum, and free operations do not
+  modify any identity field.
+- ID wraparound must never produce zero. The implementation may skip zero and
+  continue; uniqueness is required among live packet objects and expected for
+  one practical simulator run.
+
+Update ACSL and KLEVA cases for create, clone, and inheritance when the fields
+are added to `Packet`.
 
 ## Flow Charts
 

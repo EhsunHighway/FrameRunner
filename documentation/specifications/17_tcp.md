@@ -921,6 +921,27 @@ Implementation order:
 Current behavior can schedule another retransmit for each unacknowledged queue
 entry. Since `TCP_MAX_INFLIGHT == 1`, that means at most one new event.
 
+## Trace And Animation Integration
+
+TCP emits semantic records for state-machine decisions, not every internal
+helper call:
+
+- packet construction and header addition
+- SYN, SYN-ACK, ACK, FIN, and RST transmission/reception
+- TCB state transitions with old and new state
+- payload delivery
+- retransmission timer firing and retransmitted clone
+- ACK advancement and retransmission-queue removal
+- malformed segment, unavailable TCB, or retry exhaustion drops
+
+TCP segment clones preserve trace identity through `packet_clone`. A SYN-ACK,
+ACK, reset, or other segment generated in direct response to a received segment
+inherits the received packet's trace before emission. A new application
+connection begins a new trace.
+
+Trace append failure does not change TCB state, sequence numbers, timers,
+retransmission ownership, or return codes.
+
 ## Flow Charts
 
 ### Active Open

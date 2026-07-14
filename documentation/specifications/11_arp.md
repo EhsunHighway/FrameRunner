@@ -518,6 +518,41 @@ Implementation order:
 Current implementation note: the handler does not verify that the reply target
 IP/MAC is actually this interface before learning the sender.
 
+## Trace And Causal Packet Integration
+
+To associate an ARP exchange with the packet waiting for resolution, extend the
+request boundary when tracing is implemented:
+
+```c
+int arp_send_request(Simulator    *sim,
+                     Interface    *iface,
+                     uint32_t      target_ip,
+                     const Packet *cause_pkt);
+```
+
+`cause_pkt` is optional and borrowed. After creating the ARP packet and before
+emitting its first trace record, call `packet_inherit_trace` when
+`cause_pkt != NULL`. Existing IP/router callers pass the packet being queued
+for ARP resolution. A user-initiated standalone ARP request passes `NULL` and
+starts a new trace.
+
+Record order:
+
+- Emit `TRACE_ARP_LOOKUP` at the caller after a cache hit or miss is known.
+- Emit `TRACE_ARP_REQUEST` after the request bytes are complete and before
+  Ethernet output.
+- On request receive, emit the validated sender/target identities before
+  constructing a reply.
+- `arp_send_reply` inherits trace identity from its request packet, then emits
+  `TRACE_ARP_REPLY` before output.
+- After a reply updates the cache, emit `TRACE_ARP_CACHE_UPDATE` before pending
+  packets are flushed. Each resumed packet retains its original trace.
+- Malformed or policy-rejected ARP packets emit `TRACE_PACKET_DROPPED` before
+  cleanup.
+
+Do not store ARP packet pointers in trace records and do not make cache or
+pending-packet ownership depend on trace success.
+
 ## Flow Charts
 
 ### Send Request

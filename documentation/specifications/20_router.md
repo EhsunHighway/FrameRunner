@@ -674,6 +674,26 @@ ARP pending entries store already-formed layer-3 packets. When ARP later learns
 the MAC address, `arp_pending_flush` sends the queued packet with
 `ethernet_send`, so Router must not call `ip_send` for forwarded packets.
 
+## Device Type And Trace Integration
+
+`router_create` sets `router->base.type = DEVICE_TYPE_ROUTER` before the router
+is published or added to a topology.
+
+For each forwarded IPv4 packet, emit semantic records in this order:
+
+1. packet accepted on ingress
+2. local/control-plane delivery decision, when applicable
+3. `TRACE_ROUTE_LOOKUP` with destination
+4. `TRACE_ROUTE_SELECTED` with matched prefix, prefix length, next hop, metric,
+   and egress interface; or a drop record when no route exists
+5. `TRACE_TTL_CHANGED` after successful decrement/checksum update
+6. `TRACE_ARP_LOOKUP` for the selected next hop
+7. pending-ARP state or Ethernet egress attempt
+
+When ARP is missing, pass the forwarded packet as the causal packet for the ARP
+request. Router trace failures never alter forwarding, ICMP error generation,
+route-table contents, counters, or ownership.
+
 ## Flow Charts
 
 ### Creation

@@ -190,6 +190,7 @@ and belongs to the code that scheduled the event.
 struct Event {
     EventType     type;
     uint64_t      timestamp;
+    uint64_t      sequence;
     void         *src_device;
     void         *dst_device;
     void         *packet;
@@ -205,6 +206,7 @@ Field meanings:
 | --- | --- |
 | `type` | Classification key for event kind. |
 | `timestamp` | Simulated time when the event should fire. |
+| `sequence` | Scheduler-assigned insertion sequence used to order equal timestamps. Zero means not yet scheduled. |
 | `src_device` | Opaque source pointer, typed by the event creator. |
 | `dst_device` | Opaque destination pointer, typed by the event creator. |
 | `packet` | Opaque packet pointer, usually `Packet *`. |
@@ -228,7 +230,7 @@ typedef struct EventQueue {
 
 `capacity` is the number of allocated slots.
 
-The valid occupied range is:
+The valid occupied range is ordered by `(timestamp, sequence)` and is:
 
 ```text
 events[0 .. count - 1]
@@ -587,6 +589,31 @@ Implementation order:
 - Return `1` if `count == 0`.
 - Return `0` otherwise.
 - Do not change queue state.
+
+## Stable Equal-Time Ordering And Trace Integration
+
+`event_create` and `event_create_callback` initialize `sequence = 0`. Event
+creation does not decide queue order. `scheduler_schedule` assigns a nonzero
+sequence only as part of successful insertion.
+
+`event_queue_push` orders events by the pair:
+
+```text
+(event->timestamp, event->sequence)
+```
+
+Lower timestamps come first. Equal timestamps use lower sequence first. An
+event with `sequence == 0` is not valid for direct queue insertion after the
+scheduler integration is implemented; callers schedule through
+`scheduler_schedule`.
+
+The sequence is displayable diagnostic state, not simulated time. It ensures
+that `step`, same-time animation `tick`, logs, and deterministic replay all
+observe the same order.
+
+Trace records copy event type, timestamp, and sequence. A trace record must not
+retain an `Event *`, because `scheduler_step` frees the event immediately after
+dispatch.
 
 ## Flow Charts
 

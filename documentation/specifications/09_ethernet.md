@@ -421,6 +421,26 @@ iface->rx_handler(iface, frame, ethertype, iface->handler_ctx)
 
 The function assumes `e` itself is valid. It does not check `e == NULL`.
 
+## Trace And Animation Integration
+
+Ethernet emits semantic records through the supplied `Simulator`; it does not
+include display headers.
+
+- After a successful Ethernet prepend and before link transmission, emit
+  `TRACE_HEADER_ADDED` naming Ethernet, source interface, packet identity,
+  EtherType, and new visible length.
+- When link transmission succeeds, `link_transmit` emits the movement record;
+  Ethernet must not create a duplicate active-link visual.
+- On receive, emit `TRACE_PACKET_RX` before destructive header stripping while
+  the complete frame can be snapshotted.
+- After destination-MAC and EtherType acceptance, emit a semantic acceptance
+  summary, strip the header, then emit `TRACE_HEADER_REMOVED` with the new
+  visible layer.
+- On malformed length, disabled interface, wrong destination MAC, unsupported
+  EtherType, or lower-layer failure, emit `TRACE_PACKET_DROPPED` with a stable
+  reason before freeing or returning according to existing ownership rules.
+- Trace failure never changes the Ethernet return code or counter updates.
+
 ## Flow Charts
 
 ### Send

@@ -1,8 +1,8 @@
 # Module 08 - Simulator
 
 **Files:** `src/engine/simulator.c`, `src/engine/simulator.h`
-**Status:** Implemented
-**Depends on:** `topology`, `scheduler`, `event`, `device`, `packet`
+**Status:** Base implemented; trace ownership integration pending
+**Depends on:** `topology`, `scheduler`, `trace`, `event`, `device`, `packet`
 
 ## Concepts First
 
@@ -145,7 +145,9 @@ logic.
 typedef struct Simulator {
     Topology  *topo;
     Scheduler *sched;
+    TraceLog  *trace;
     uint64_t   end_time;
+    int        trace_failed;
 } Simulator;
 ```
 
@@ -155,13 +157,16 @@ Field meanings:
 | --- | --- |
 | `topo` | Owned topology pointer. |
 | `sched` | Owned scheduler pointer. |
+| `trace` | Owned persistent simulation trace, or `NULL` when tracing is disabled by construction. |
 | `end_time` | Stop time. `0` means no limit. |
+| `trace_failed` | Nonzero after an observation could not be stored; network execution still continues. |
 
 Required shape:
 
 ```text
 topo != NULL
 sched != NULL
+trace is NULL or a valid owned TraceLog
 end_time is any uint64_t
 ```
 
@@ -169,7 +174,9 @@ end_time is any uint64_t
 
 `simulator_create` does not create a topology or scheduler. It receives them.
 
-On success, ownership transfers to the simulator.
+On success, ownership of topology and scheduler transfers to the simulator.
+The simulator creates and owns its trace service according to the construction
+API defined by the trace integration section below.
 
 On failure, ownership does not transfer. The caller remains responsible for the
 topology and scheduler.
@@ -487,6 +494,46 @@ Implementation order:
 - If `fn == NULL`, return without changing state.
 - If `type < 0` or `type >= EVT_TYPE_COUNT`, return without changing state.
 - Otherwise call `scheduler_register(sim->sched, type, fn, ctx)`.
+
+## Trace Ownership And Animation Control
+
+Add:
+
+```c
+#define SIM_TRACE_INITIAL_CAPACITY 256
+
+int simulator_trace_emit(Simulator         *sim,
+                         const TraceRecord *record);
+```
+
+Construction and cleanup order:
+
+1. `simulator_create` validates topology and scheduler and allocates the
+   simulator as currently specified.
+2. Create a trace log with `SIM_TRACE_INITIAL_CAPACITY`.
+3. If trace allocation fails, free only the new simulator struct and return
+   `NULL`; ownership of caller-supplied topology and scheduler has not yet
+   transferred.
+4. Store topology, scheduler, trace, end time zero, and trace-failed zero.
+5. Bind the trace to the scheduler with `scheduler_set_trace`.
+6. Ownership transfers only after all initialization succeeds.
+7. `simulator_free` first prevents further scheduler observations, frees the
+   scheduler while its borrowed trace is still valid, then frees topology,
+   trace, and simulator.
+
+`simulator_trace_emit` behavior:
+
+- Return `-1` for null simulator, trace, or record.
+- Append through `trace_log_append`.
+- If append fails, set `sim->trace_failed = 1` and return `-1`.
+- Otherwise return `0`.
+- Protocol and forwarding operations ignore this return for network semantics;
+  an observation failure must not alter packet delivery or routing state.
+
+Animation calls `simulator_step` and reads trace records after each event. It
+does not receive ownership of simulator state. Bounded animation uses existing
+end-time control plus an event-count limit owned by the animation/CLI layer;
+periodic routing timers mean a run cannot assume the queue will become empty.
 
 ## Flow Charts
 

@@ -515,6 +515,24 @@ Implementation order:
 - If `topo == NULL`, return `0`.
 - Otherwise return `topo->link_count`.
 
+## Configuration And Automatic Layout Boundary
+
+The completed topology module continues to own and index devices and links. It
+does not absorb either new responsibility:
+
+- `topology_config` parses files, creates objects, resolves references, and
+  transfers completed objects into the topology.
+- `topology_layout` borrows the graph and computes temporary coordinates.
+
+No `x`, `y`, row, column, color, or viewport field is added to `Topology`,
+`Device`, `Interface`, or `Link`. The same topology may be rendered into
+different terminal sizes without changing network state.
+
+The loader and layout engine use the existing count-bounded traversal and
+lookup APIs. New topology query helpers may be added only when they express
+graph information without presentation policy; display code must not mutate
+topology arrays directly.
+
 ## Flow Charts
 
 ### Create Topology

@@ -586,6 +586,23 @@ Incoming validation accepts a message only when:
 icmp_checksum(data, len) == 0
 ```
 
+## Trace And Causal Packet Integration
+
+- Emit `TRACE_PROTOCOL_STATE_CHANGED` with an ICMP-specific summary after a
+  complete ICMP message is constructed and checksum is stored.
+- Echo replies and ICMP errors call `packet_inherit_trace(reply, request)`
+  before their first trace record. Thus a ping trace includes request, routing,
+  ARP dependencies, and reply.
+- On receive, emit the decoded type/code after length and checksum validation
+  but before dispatch.
+- Emit `TRACE_TRANSPORT_DELIVERY` when an echo reply reaches its destination.
+- Emit `TRACE_PACKET_DROPPED` for malformed length, invalid checksum,
+  unsupported type/code, or failed reply construction according to existing
+  ownership rules.
+
+Trace summaries must not be used as protocol state and trace failure does not
+change ICMP success or error behavior.
+
 ## Flow Charts
 
 ### Receive

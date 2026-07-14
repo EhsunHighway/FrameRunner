@@ -140,18 +140,23 @@ For implemented modules, the spec should match the current `src/` behavior.
 For future modules, the spec is a design contract. When implementation changes
 the real behavior, update the spec in the same change.
 
+Module numbers are stable catalog identifiers. Phase placement describes the
+architectural layer and implementation prerequisite; it does not require
+numbers inside one phase to be contiguous.
+
 ## Phase 1 - Core Infrastructure
 
 | # | Module | Spec | Spec Status |
 | --- | --- | --- | --- |
 | 01 | Packet | [01_packet.md](01_packet.md) | Updated |
 | 02 | Event | [02_event.md](02_event.md) | Updated |
-| 03 | Scheduler | [03_scheduler.md](03_scheduler.md) | Updated |
+| 30 | Simulation Trace | [30_trace.md](30_trace.md) | Ready for implementation |
+| 03 | Scheduler | [03_scheduler.md](03_scheduler.md) | Trace retrofit pending |
 | 04 | Interface | [04_interface.md](04_interface.md) | Updated |
 | 05 | Link | [05_link.md](05_link.md) | Updated |
 | 06 | Device | [06_device.md](06_device.md) | Updated |
 | 07 | Topology | [07_topology.md](07_topology.md) | Updated |
-| 08 | Simulator | [08_simulator.md](08_simulator.md) | Updated |
+| 08 | Simulator | [08_simulator.md](08_simulator.md) | Trace retrofit pending |
 
 ## Phase 2 - Protocols
 
@@ -181,13 +186,23 @@ the real behavior, update the spec in the same change.
 | 25 | IS-IS | [25_isis.md](25_isis.md) | Updated |
 | 26 | NAT / PAT | [26_nat.md](26_nat.md) | Updated |
 
-## Phase 4 - Display And CLI
+## Phase 4 - Display Foundations
 
 | # | Module | Spec | Spec Status |
 | --- | --- | --- | --- |
 | 27 | Topology Display | [27_display_topology.md](27_display_topology.md) | Updated |
 | 28 | Packet Header Display | [28_display_packet.md](28_display_packet.md) | Updated |
-| 29 | CLI | [29_cli.md](29_cli.md) | Updated |
+| 31 | Automatic Topology Layout | [31_topology_layout.md](31_topology_layout.md) | Ready for implementation |
+| 32 | Trace Event Log | [32_event_log.md](32_event_log.md) | Ready for implementation |
+
+## Phase 5 - Runnable Simulator And Animation
+
+| # | Module | Spec | Spec Status |
+| --- | --- | --- | --- |
+| 29 | Topology Configuration | [29_topology_config.md](29_topology_config.md) | Ready for implementation |
+| 33 | Terminal Animation | [33_animation.md](33_animation.md) | Ready for implementation |
+| 34 | CLI Core | [34_cli.md](34_cli.md) | Ready for implementation |
+| 35 | CLI Built-In Commands | [35_cli_commands.md](35_cli_commands.md) | Ready for implementation |
 
 ## How To Use These Files
 

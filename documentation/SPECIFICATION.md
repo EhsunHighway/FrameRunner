@@ -18,9 +18,9 @@ reflects actual in-memory state.
 | Protocols | Ethernet, ARP, IPv4, ICMP, TCP, UDP |
 | Routing | Static, RIP (Phase 1), OSPF (Phase 2 module) |
 | Devices | Host, Switch, Router |
-| Simulation mode | Event-driven, single-threaded loop (Phase 1) |
-| Concurrency | Per-device threads with event queues (Phase 2) |
-| Interface | CLI with ASCII topology + formatted header boxes |
+| Simulation mode | Deterministic, event-driven, single-threaded loop |
+| Concurrency | Logically concurrent device activity ordered by simulated time and event sequence |
+| Interface | CLI with automatic ASCII topology layout, packet animation, trace log, and formatted header boxes |
 | Extensibility | Protocol plugin interface for BGP, IS-IS, VLANs, etc. |
 
 ### Out of Scope (Phase 1)
@@ -38,21 +38,21 @@ reflects actual in-memory state.
 - FR-01: User can define a topology (devices + links) via a config file or CLI commands.
 - FR-02: Devices have: name, type (host/switch/router), interfaces with MAC and IP addresses.
 - FR-03: Links have: bandwidth (Mbps), delay (ms), packet loss rate (%).
-- FR-04: Topology is displayed as ASCII art in the terminal.
+- FR-04: Topology is displayed as ASCII art using positions calculated by the display layer. The topology configuration does not contain visual coordinates.
 
 ### 3.2 Packet Simulation
 - FR-05: User can trigger a packet send: `send <src> <dst> <protocol> [options]`.
 - FR-06: At each OSI layer, the appropriate header is constructed as a C struct and prepended to the packet buffer.
-- FR-07: Each encapsulation step is displayed as a formatted ASCII header box.
+- FR-07: Each encapsulation step creates a persistent semantic trace record and packet snapshot that can later be displayed as a formatted ASCII header box.
 - FR-08: Physical layer transmits a byte buffer over a simulated link.
-- FR-09: Receiving device decapsulates: strips headers layer by layer, displays each step.
+- FR-09: Receiving devices decapsulate headers layer by layer and record each validation, forwarding, delivery, or drop decision in the packet trace.
 
 ### 3.3 Event System
-- FR-10: All actions in the simulation are represented as events with a type, source, destination, timestamp, and payload.
-- FR-11: Events are stored in a priority queue ordered by timestamp.
-- FR-12: The simulation loop processes one event at a time (step mode) or runs until idle (run mode).
-- FR-13: User can step forward one event at a time (`step`) or run continuously (`run`).
-- FR-14: User can pause (`pause`) or reset (`reset`) the simulation.
+- FR-10: Scheduled work is represented by events. Observable protocol and device decisions are represented by persistent trace records associated with packet, trace, and parent-packet IDs where applicable.
+- FR-11: Events are stored in one scheduler queue ordered by `(timestamp, sequence)` so equal-time behavior is deterministic.
+- FR-12: The simulation loop processes one event at a time or runs for a bounded simulated duration or bounded event count. It must not assume the queue becomes empty because periodic protocol timers continually reschedule work.
+- FR-13: User can advance one event (`step`), advance animation ticks (`tick`), run for a duration (`run time`), or run for an event count (`run events`).
+- FR-14: User can stop the CLI loop or disable live animation without discarding the current simulator state.
 
 ### 3.4 Protocol Modules
 - FR-15: ARP: resolve IP→MAC, maintain ARP table per device, send ARP request/reply events.
@@ -74,29 +74,35 @@ reflects actual in-memory state.
 - FR-27: Link down triggers re-routing events (for dynamic routing protocols).
 
 ### 3.7 Visualization
-- FR-28: Topology view: ASCII art of all devices and links, updated on each state change.
-- FR-29: Packet journey view: shows each hop and each layer step for a given packet.
+- FR-28: Topology view: deterministic ASCII art of all devices and links using automatic display-only layout, updated when relevant state changes.
+- FR-29: Packet journey view: animates every currently visible in-flight packet and shows each hop and protocol/device step for a selected packet or trace.
 - FR-30: Header box view: formatted ASCII box for each protocol header with field names and values.
-- FR-31: Event log: scrollable list of all past events with timestamps.
+- FR-31: Trace log: persistent ordered records of scheduled events and semantic protocol/device actions, including simulated start and end timestamps where an action spans time.
 - FR-32: Routing table view: display the routing table of any device on demand.
 - FR-33: ARP table view: display the ARP cache of any device on demand.
 
 ### 3.8 CLI Commands
 | Command | Description |
 |---|---|
-| `topology show` | Print ASCII topology |
+| `show topology` | Print ASCII topology |
 | `send <src> <dst> <proto> [opts]` | Send a packet |
 | `step` | Process next event |
-| `run` | Process all pending events |
-| `pause` | Pause auto-run |
-| `reset` | Clear simulation state |
+| `run time <duration_us>` | Process events within a bounded simulated duration |
+| `run events <count>` | Process at most the requested event count |
+| `tick [n]` | Advance animation by a bounded number of wall-clock frames |
+| `watch on\|off` | Enable or disable live animation output |
+| `speed <factor>` | Change simulated-time-to-wall-time playback scale |
 | `inject drop <device> <interface>` | Drop next packet on interface |
 | `inject corrupt <device> <interface>` | Corrupt next packet |
 | `inject linkdown <link>` | Bring a link down |
 | `show route <device>` | Print routing table |
 | `show arp <device>` | Print ARP table |
 | `show packet <id>` | Show full packet journey |
-| `show events` | Print event log |
+| `focus all\|auto` | Select automatic or unfiltered animation focus |
+| `focus device <name>` | Limit the view to activity involving one device |
+| `focus packet <packet_id>` | Follow one packet object |
+| `focus trace <trace_id>` | Follow an entire causal packet journey |
+| `show trace <trace_id>` | Print the persistent trace for one journey |
 | `load <file>` | Load topology from file |
 | `help` | Print command help |
 | `quit` | Exit simulator |
@@ -112,6 +118,13 @@ reflects actual in-memory state.
 - NFR-05: All header fields must use correct sizes (`uint8_t`, `uint16_t`, `uint32_t`).
 - NFR-06: Packet buffers must use network byte order (big-endian) via `htons`/`htonl`.
 - NFR-07: Memory: no leaks; all allocated packets/events must be freed after processing.
+- NFR-08: Repeating the same topology and inputs produces the same equal-time
+  event order and automatic layout.
+- NFR-09: Trace records own bounded copies of display data and must not retain
+  pointers to packets, stack objects, device names, or protocol structures that
+  may be freed.
+- NFR-10: The first runnable animation requires only the C standard library and
+  POSIX terminal facilities; no GUI or external rendering library is required.
 
 ---
 
@@ -188,6 +201,8 @@ typedef struct Packet {
     size_t    len;        // current buffer length
     size_t    capacity;   // allocated capacity
     uint32_t  id;         // unique packet ID
+    uint32_t  trace_id;   // causal journey shared by related packets
+    uint32_t  parent_id;  // packet that caused this packet, or zero
     int       layer;      // current OSI layer (1-4)
 } Packet;
 
@@ -195,6 +210,7 @@ typedef struct Packet {
 typedef struct Event {
     EventType    type;
     uint64_t     timestamp;   // simulated microseconds
+    uint64_t     sequence;    // deterministic tie breaker
     void        *src_device;
     void        *dst_device;
     Packet      *packet;      // may be NULL for control events
@@ -209,7 +225,6 @@ typedef struct Device {
     int          iface_count;
     RouteTable  *route_table; // NULL for hosts/switches
     ARPTable    *arp_table;
-    EventQueue  *eq;          // per-device queue (Phase 2)
 } Device;
 ```
 
@@ -219,22 +234,31 @@ typedef struct Device {
 
 ### Phase 1 — Core
 - Single-threaded event loop
+- Persistent semantic trace with packet lineage
 - Ethernet, ARP, IPv4, ICMP, TCP, UDP
 - Static routing
-- Basic CLI commands
-- ASCII topology + header visualization
+- Base packet, event, network, routing, and protocol modules
 
 ### Phase 2 — Protocols
 - RIP dynamic routing
 - OSPF module
-- Per-device threads + concurrent event queues
 - TCP 3-way handshake full simulation
 
-### Phase 3 — Extensions
+### Phase 3 — Display Foundations
+- Automatic topology layout
+- Static topology and packet-header views
+- Trace event-log rendering
+
+### Phase 4 — Runnable Simulator
+- Text topology configuration and atomic load
+- Multi-packet terminal animation and bounded CLI controls
+
+### Phase 5 — Extensions
 - BGP module
+- IS-IS and NAT/PAT modules
 - VLAN support
 - ncurses interactive UI
-- Scenario save/load (JSON or text config)
+- Scenario save/export
 
 ---
 
@@ -251,13 +275,16 @@ networking_simulator/
 │   ├── engine/
 │   │   ├── event.c/h       # event types, queue, dispatch
 │   │   ├── simulator.c/h   # main simulation loop
-│   │   └── scheduler.c/h   # event timestamp ordering
+│   │   ├── scheduler.c/h   # timestamp and sequence ordering
+│   │   └── trace.c/h       # persistent semantic simulation trace
+│   ├── config/
+│   │   └── topology_config.c/h # text parsing and atomic construction
 │   ├── network/
 │   │   ├── device.c/h      # device struct, init, dispatch
 │   │   ├── interface.c/h   # network interface management
 │   │   ├── link.c/h        # link simulation (delay, loss)
 │   │   ├── packet.c/h      # packet buffer management
-│   │   └── topology.c/h    # topology load, store, display
+│   │   └── topology.c/h    # topology storage and lookup
 │   ├── protocols/
 │   │   ├── ethernet.c/h    # Layer 2: Ethernet framing
 │   │   ├── arp.c/h         # ARP request/reply, ARP table
@@ -274,8 +301,10 @@ networking_simulator/
 │   │   └── commands.c/h    # command implementations
 │   └── display/
 │       ├── topology_view.c/h  # ASCII topology renderer
+│       ├── topology_layout.c/h # deterministic automatic layout
 │       ├── header_view.c/h    # protocol header box renderer
-│       └── event_log.c/h      # event log display
+│       ├── event_log.c/h      # trace history display
+│       └── animation.c/h      # multi-packet terminal animation
 └── tests/
     ├── test_packet.c
     ├── test_arp.c

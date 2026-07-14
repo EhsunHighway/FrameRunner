@@ -49,23 +49,11 @@ The current `Topology` struct stores:
 
 The display should iterate the topology arrays by count, not by capacity.
 
-### Device Type Limitation
+### Device Type
 
-Current `Device` has no `DeviceType` field.
-
-That means topology display cannot reliably know whether a `Device *` is a
-Host, Router, or Switch from the base struct alone.
-
-First milestone behavior:
-
-- print `[Device]` for all base `Device *` objects
-
-Future behavior:
-
-- add an explicit type tag to Device or use a safe wrapper/type registry
-- then print `[Host]`, `[Router]`, or `[Switch]`
-
-Do not infer type from unrelated fields or from the device name.
+The runnable-animation milestone adds an explicit `DeviceType` tag to the base
+device. Print `[Host]`, `[Router]`, `[Switch]`, or `[Device]` from that tag. Do
+not infer type from names, interface count, protocol fields, or casts.
 
 ### Address Formatting
 
@@ -417,6 +405,20 @@ Implementation order:
 - Print link list.
 - Print closing separator.
 - Return `0` if all required printing succeeds.
+
+## Automatic Layout Boundary
+
+This module remains the static, stream-oriented topology report used by
+`show topology`, scripts, tests, and noninteractive output. It does not become
+stateful animation code.
+
+`topology_layout` separately calculates coordinates from the same borrowed
+graph, and `animation` draws packets on that layout. No topology-view function
+reads coordinates from configuration or writes network objects.
+
+The static report includes explicit device type and continues to list every
+device, interface, and link even when the animated viewport cannot show the
+whole graph at once.
 
 ## Flow Charts
 

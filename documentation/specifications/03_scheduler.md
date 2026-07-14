@@ -1,8 +1,8 @@
 # Module 03 - Scheduler
 
 **Files:** `src/engine/scheduler.c`, `src/engine/scheduler.h`
-**Status:** Implemented
-**Depends on:** `event`
+**Status:** Base implemented; trace integration pending
+**Depends on:** `event`, `trace`
 
 ## Concepts First
 
@@ -162,7 +162,9 @@ typedef struct {
 typedef struct Scheduler {
     EventQueue   *eq;
     uint64_t      now;
+    uint64_t      next_event_sequence;
     int           running;
+    struct TraceLog *trace;
     HandlerEntry  handlers[EVT_TYPE_COUNT];
 } Scheduler;
 ```
@@ -173,7 +175,9 @@ Field meanings:
 | --- | --- |
 | `eq` | Owned event queue. |
 | `now` | Current simulated time. |
+| `next_event_sequence` | Next nonzero sequence assigned after successful insertion. |
 | `running` | `1` while `scheduler_run` should keep stepping. |
+| `trace` | Optional borrowed trace log used for scheduler observations. |
 | `handlers` | Fallback handler table indexed by valid `EventType`. |
 
 ## Ownership And Lifetime
@@ -192,6 +196,8 @@ Field meanings:
 - frees the scheduler
 
 It does not free:
+
+- the borrowed trace log
 
 - `event->packet`
 - `event->data`
@@ -480,6 +486,44 @@ Implementation order:
 
 - If `s == NULL`, return `0`.
 - Otherwise return `s->now`.
+
+## Trace Binding And Equal-Time Ordering
+
+Add this public binding function:
+
+```c
+void scheduler_set_trace(Scheduler *s, struct TraceLog *trace);
+```
+
+The scheduler borrows `trace`; it does not create, clear, or free it. Passing
+`NULL` disables scheduler-generated observations.
+
+Initialization and scheduling order:
+
+1. `scheduler_create` sets `next_event_sequence = 1` and `trace = NULL`.
+2. `scheduler_schedule` validates scheduler and event.
+3. Save `candidate_sequence = next_event_sequence` and assign it temporarily
+   to the event.
+4. Insert using `(timestamp, sequence)` ordering.
+5. On insertion failure, restore `event->sequence = 0`, leave
+   `next_event_sequence` unchanged, and return `-1`.
+6. On success, advance `next_event_sequence`, skipping zero on wraparound.
+7. When tracing is enabled, append `TRACE_EVENT_SCHEDULED` after successful
+   insertion. Trace append failure does not remove the scheduled event.
+
+Dispatch observation order:
+
+1. Pop the next event and advance `now` exactly as currently specified.
+2. Append `TRACE_EVENT_STARTED` before invoking a handler.
+3. Invoke the event-specific callback or fallback handler once.
+4. Append `TRACE_EVENT_FINISHED` after the handler returns and before freeing
+   the event.
+5. Free the event and return `1`.
+
+Scheduler trace records may capture packet identity and visible bytes while the
+event packet is still valid. They leave device/interface names empty when the
+opaque source or destination type is not known. Link and protocol records add
+the semantic names.
 
 ## Flow Charts
 

@@ -126,11 +126,27 @@ Host, Switch, or Router state.
 
 ## Data Model
 
+### `DeviceType`
+
+```c
+typedef enum DeviceType {
+    DEVICE_TYPE_GENERIC,
+    DEVICE_TYPE_HOST,
+    DEVICE_TYPE_SWITCH,
+    DEVICE_TYPE_ROUTER
+} DeviceType;
+```
+
+The type tag identifies the concrete network role for configuration, tracing,
+and rendering. It does not replace concrete `Host`, `Switch`, or `Router`
+state and must never be used to cast an unrelated object.
+
 ### `Device`
 
 ```c
 typedef struct Device {
     char        name[32];
+    DeviceType  type;
     Interface **interfaces;
     int         iface_count;
     int         iface_max;
@@ -142,6 +158,7 @@ Field meanings:
 | Field | Meaning |
 | --- | --- |
 | `name` | Null-terminated device name, truncated to 31 visible bytes. |
+| `type` | Explicit base-device role; `device_create` starts as `DEVICE_TYPE_GENERIC`. |
 | `interfaces` | Allocated array of `Interface *`. |
 | `iface_count` | Number of live interface pointers. |
 | `iface_max` | Capacity of the `interfaces` array. |
@@ -439,6 +456,25 @@ Implementation order:
 - Otherwise return `0`.
 
 This is a stub. Host, switch, and router modules provide real send behavior.
+
+## Device Type And Trace Integration
+
+`device_create` initializes `type = DEVICE_TYPE_GENERIC`. Concrete constructors
+then set their embedded base device exactly once before publishing the object:
+
+- `host_create` sets `DEVICE_TYPE_HOST`
+- `switch_create` sets `DEVICE_TYPE_SWITCH`
+- `router_create` sets `DEVICE_TYPE_ROUTER`
+
+Base-device lookup, interface ownership, send, and receive behavior do not
+branch on type unless a function explicitly requires a concrete role. Display
+and configuration code may use the tag for labels and validation but must not
+use it as the only proof that an arbitrary pointer is safely castable.
+
+When generic device send/receive paths gain real behavior, they emit semantic
+trace records through the associated simulator context supplied by the
+concrete owner. The base `Device` does not own a trace log and does not depend
+on display headers.
 
 ## Flow Charts
 
