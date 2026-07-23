@@ -49,6 +49,7 @@ typedef enum {
 struct Event {
     EventType     type;
     uint64_t      timestamp;     // simulated microseconds
+    uint64_t      sequence;
     void         *src_device;    // pointer to source device
     void         *dst_device;    // pointer to destination device
     void         *packet;        // Packet* — void* to avoid circular include
@@ -58,9 +59,9 @@ struct Event {
 };
 
 typedef struct EventQueue {
-    Event   **events;           // array of Event pointers
-    size_t    count;            // current number of events
-    size_t    capacity;         // allocated capacity
+    Event  **events;           // array of Event pointers
+    size_t   count;            // current number of events
+    size_t   capacity;         // allocated capacity
 } EventQueue;
 
 

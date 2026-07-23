@@ -1,4 +1,4 @@
-# Module 12 - MAC Table
+# Module 13 - MAC Table
 
 **Files:** `src/network/mac_table.c`, `src/network/mac_table.h`
 **Status:** Implemented

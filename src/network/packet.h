@@ -23,6 +23,8 @@ typedef struct Packet {
     size_t   len;         // bytes of valid data starting at data
     size_t   capacity;    // usable payload bytes (excludes headroom)
     uint32_t id;          // unique packet ID
+    uint32_t trace_id;
+    uint32_t parent_id;
     int      layer;       // current OSI layer (1-4)
 } Packet;
 
@@ -110,5 +112,6 @@ uint16_t packet_checksum(const void *data, size_t len);
 
 void     packet_dump(const Packet *p);
 
+int packet_inherit_trace(Packet *child, const Packet *parent);
 
 #endif // PACKET_H

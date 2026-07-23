@@ -1,4 +1,4 @@
-# Module 32 - Trace Event Log
+# Module 31 - Trace Event Log
 
 **Files:** `src/display/event_log.c`, `src/display/event_log.h`
 **Status:** Ready for implementation; current source files are empty
@@ -58,9 +58,11 @@ Every printed record contains, in this order:
 1. simulated `timestamp`; include `end_timestamp` when it differs
 2. trace-record `sequence`
 3. action name
-4. packet ID and trace ID when nonzero
-5. source and destination device/interface names when present
-6. result and summary
+4. associated event type, `event_timestamp`, and `event_sequence` when
+   `event_type != EVT_TYPE_COUNT`
+5. packet ID and trace ID when nonzero
+6. source and destination device/interface names when present
+7. result and summary
 
 Use one physical output line per record. Empty copied names are omitted rather
 than printed as pointer values or guessed from live topology state.
@@ -112,7 +114,8 @@ Stream-write success remains a dynamic-test obligation.
 
 Tests cover null arguments, empty logs, zero and oversized recent limits,
 single and multiple matches, no-match output, packet-versus-trace selection,
-stored sequence order, optional names, interval timestamps, and output failure.
+stored trace-sequence order, associated event timestamp/sequence, no-event
+sentinel handling, optional names, interval timestamps, and output failure.
 
 ## Common Mistakes
 

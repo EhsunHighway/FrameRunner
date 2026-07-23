@@ -256,10 +256,21 @@ Field meanings:
 | `data` | Start of the currently visible packet bytes. |
 | `len` | Number of visible bytes beginning at `data`. |
 | `capacity` | Payload/data capacity, excluding `PKT_HEADROOM`. |
-| `id` | Monotonically increasing identifier for this allocated packet object. |
+| `id` | Nonzero sequential identifier for this allocated packet object. |
 | `trace_id` | Stable causal-journey identifier shared by related packets and clones. |
 | `parent_id` | Immediate source packet object's `id`, or `0` when no parent is recorded. |
 | `layer` | Current OSI-ish display layer used by render/debug code. |
+
+### Packet ID State
+
+The implementation keeps a packet-ID counter private to `packet.c`. Its initial
+value is `1`. A successfully created packet receives the current nonzero counter
+value, after which the counter advances. If advancing the counter produces zero,
+skip zero before assigning another packet ID.
+
+Packet IDs are expected to be unique during one practical simulator run. The
+module does not scan live packets or retain previously issued IDs when the
+32-bit counter wraps.
 
 ### Required Layout Invariant
 
@@ -315,6 +326,9 @@ int      packet_validate_view(const Packet *pkt,
 
 Packet  *packet_clone(const Packet *p);
 
+int      packet_inherit_trace(Packet       *child,
+                              const Packet *parent);
+
 void     packet_free(Packet *p);
 
 uint16_t packet_checksum(const void *data, size_t len);
@@ -348,6 +362,7 @@ Follow every validation, capacity, ordering, byte-order, and ownership rule in t
 
 Implementation order:
 
+- If `capacity > SIZE_MAX - PKT_HEADROOM`, return `NULL`.
 - Allocate a `Packet`.
 - If `Packet` allocation fails, return `NULL`.
 - Allocate `PKT_HEADROOM + capacity` bytes for `head`.
@@ -358,11 +373,16 @@ Implementation order:
 - Set `len == 0`.
 - Set `capacity == capacity`.
 - Set `layer == 0`.
-- Assign a fresh packet `id`.
+- Obtain the next nonzero value from the packet module's private ID counter and
+  assign it to `id`.
+- Set `trace_id == id`, establishing this packet as the beginning of a new
+  trace journey.
+- Set `parent_id == 0` because no parent packet has been recorded.
+- Return the initialized packet.
 
-The implementation currently accepts `capacity == 0` at the C level, but the
-ACSL contract requires `capacity > 0`. Tests and new callers should treat
-zero-capacity packet creation as outside the supported API.
+`capacity == 0` is supported. The allocation still contains `PKT_HEADROOM`
+bytes, `data` points immediately after those bytes, and `len` is zero. This is
+required so that `packet_clone` can clone a packet whose visible length is zero.
 
 ### `packet_prepend`
 
@@ -524,10 +544,52 @@ Implementation order:
 - Copy exactly the visible bytes from `p->data[0 .. p->len - 1]`.
 - Set clone `len == p->len`.
 - Set clone `layer == p->layer`.
-- Give the clone its own allocation and its own `id`.
+- Call `packet_inherit_trace(clone, p)`.
+- If trace inheritance fails, free the clone and return `NULL`.
+- Return the clone.
 
 The clone starts with fresh headroom, so lower layers can prepend headers to the
-clone independently.
+clone independently. The clone keeps the new `id` assigned by `packet_create`,
+but it shares the source packet's `trace_id` and records the source packet's
+`id` as its `parent_id`.
+
+### `packet_inherit_trace`
+
+Purpose:
+
+Connect an already-created child packet to the trace journey of the packet that
+caused it to be created.
+
+Implementation task:
+
+Update only the child's trace relationship fields. This helper is used for
+clones and for protocol-generated packets such as replies and errors.
+
+Inputs and existing state:
+
+- `child` is the independently allocated packet whose trace relationship will
+  be updated.
+- `parent` is the borrowed packet from which the child was derived.
+- The helper does not take ownership of either packet.
+
+Result:
+
+- Return `0` after recording the relationship.
+- Return `-1` when either argument is `NULL`.
+
+Required behavior:
+
+- Preserve the child's `id`; the child remains a distinct packet object.
+- Do not modify the parent.
+- Do not copy packet bytes, length, capacity, layer, or buffer pointers.
+
+Implementation order:
+
+- If `child == NULL` or `parent == NULL`, return `-1` without modifying either
+  packet.
+- Copy `parent->trace_id` into `child->trace_id`.
+- Store `parent->id` in `child->parent_id`.
+- Return `0`.
 
 ### `packet_free`
 
@@ -627,33 +689,13 @@ Packet trace fields are network-observation metadata. They are not serialized
 into Ethernet, IP, or protocol headers and do not affect checksums or packet
 length.
 
-Add this public helper when trace identity is implemented:
-
-```c
-int packet_inherit_trace(Packet *child, const Packet *parent);
-```
-
-Required implementation order:
-
-- `packet_create` assigns a new nonzero `id`, sets `trace_id = id`, and sets
-  `parent_id = 0` after both allocations succeed.
-- `packet_clone` uses `packet_create`, copies visible bytes and layer, then
-  overwrites the clone's `trace_id` with the source `trace_id` and sets the
-  clone's `parent_id` to the source `id`. The clone keeps its newly allocated
-  unique `id`.
-- `packet_inherit_trace` returns `-1` for either null argument. Otherwise it
-  preserves the child's unique `id`, copies `parent->trace_id` into
-  `child->trace_id`, stores `parent->id` in `child->parent_id`, and returns `0`.
 - Protocol-generated replies and errors call `packet_inherit_trace` before the
   child packet becomes visible to tracing or lower-layer output.
 - Packet prepend, strip, validation, checksum, and free operations do not
   modify any identity field.
-- ID wraparound must never produce zero. The implementation may skip zero and
-  continue; uniqueness is required among live packet objects and expected for
-  one practical simulator run.
-
-Update ACSL and KLEVA cases for create, clone, and inheritance when the fields
-are added to `Packet`.
+- `packet_create`, `packet_clone`, and `packet_inherit_trace` define their trace
+  field changes in their own function sections above. This section defines only
+  the cross-module usage rule.
 
 ## Flow Charts
 
@@ -728,13 +770,16 @@ KLEVA/EVA.
 
 ```c
 /*@
-    requires capacity > 0;
+    requires capacity <= SIZE_MAX - PKT_HEADROOM;
     allocates \result;
     ensures \result == \null || packet_layout(\result);
     ensures \result != \null ==> \result->len == 0;
     ensures \result != \null ==> \result->capacity == capacity;
     ensures \result != \null ==> \result->layer == 0;
     ensures \result != \null ==> \result->data == \result->head + PKT_HEADROOM;
+    ensures \result != \null ==> \result->id != 0;
+    ensures \result != \null ==> \result->trace_id == \result->id;
+    ensures \result != \null ==> \result->parent_id == 0;
 */
 Packet *packet_create(size_t capacity);
 ```
@@ -822,6 +867,8 @@ the documented status values.
     ensures \result != \null ==> \result->capacity == p->len;
     ensures \result != \null ==> \result->layer == p->layer;
     ensures \result != \null ==> \result->id != p->id;
+    ensures \result != \null ==> \result->trace_id == p->trace_id;
+    ensures \result != \null ==> \result->parent_id == p->id;
 */
 Packet *packet_clone(const Packet *p);
 ```
@@ -832,6 +879,32 @@ Additional required proof/test property:
   source packet's visible byte sequence.
 - The clone's `head` allocation is independent from the source packet's `head`
   allocation.
+
+### `packet_inherit_trace`
+
+```c
+/*@
+    requires child == \null || \valid(child);
+    requires parent == \null || \valid_read(parent);
+
+    behavior invalid_argument:
+        assumes child == \null || parent == \null;
+        assigns \nothing;
+        ensures \result == -1;
+
+    behavior valid_arguments:
+        assumes child != \null && parent != \null;
+        assigns child->trace_id, child->parent_id;
+        ensures \result == 0;
+        ensures child->id == \old(child->id);
+        ensures child->trace_id == parent->trace_id;
+        ensures child->parent_id == parent->id;
+
+    complete behaviors;
+    disjoint behaviors;
+*/
+int packet_inherit_trace(Packet *child, const Packet *parent);
+```
 
 ### `packet_free`
 
@@ -899,6 +972,20 @@ Minimum KLEVA tests:
 25. `packet_free(NULL)` does not crash.
 26. `packet_checksum` handles even-length input.
 27. `packet_checksum` handles odd-length input according to current behavior.
+28. `packet_create(0)` succeeds when allocation succeeds and creates an empty
+    packet with `data == head + 64`.
+29. `packet_create` rejects a capacity larger than `SIZE_MAX - 64`.
+30. A successfully created packet has a nonzero `id`, `trace_id == id`, and
+    `parent_id == 0`.
+31. Two consecutive successful creates receive different packet IDs.
+32. A successful clone keeps its newly assigned packet ID, copies the source
+    `trace_id`, and records the source `id` as `parent_id`.
+33. `packet_inherit_trace` returns `-1` for each null-argument case without
+    modifying a non-null argument.
+34. Successful trace inheritance preserves the child's `id`, copies the
+    parent's `trace_id`, and records the parent's `id`.
+35. Prepend, strip, and validation do not modify `id`, `trace_id`, or
+    `parent_id`.
 
 ## Common Mistakes
 
@@ -910,3 +997,7 @@ Minimum KLEVA tests:
 - Do not add protocol parsing to this module.
 - Do not make `capacity` include `PKT_HEADROOM`; the code treats them
   separately.
+- Do not assign a new packet ID in `packet_inherit_trace`; preserve the ID
+  assigned when the child was created.
+- Do not set a clone's `trace_id` to its new `id`; a clone remains in its
+  source packet's trace journey.

@@ -1,4 +1,4 @@
-# Module 29 - Topology Configuration
+# Module 32 - Topology Configuration
 
 **Files:** `src/config/topology_config.c`, `src/config/topology_config.h`
 **Status:** Ready for implementation; files do not exist yet

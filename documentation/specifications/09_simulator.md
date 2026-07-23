@@ -1,4 +1,4 @@
-# Module 08 - Simulator
+# Module 09 - Simulator
 
 **Files:** `src/engine/simulator.c`, `src/engine/simulator.h`
 **Status:** Base implemented; trace ownership integration pending
@@ -48,18 +48,21 @@ simulation state.
 
 ### Ownership Root
 
-After `simulator_create(topo, sched)` succeeds, the simulator owns both
-pointers.
+After `simulator_create(topo, sched)` succeeds, the simulator owns topology,
+scheduler, and its newly created trace log.
 
 `simulator_free` frees:
 
-1. scheduler
-2. topology
-3. simulator
+1. clear the scheduler's borrowed trace binding
+2. scheduler
+3. topology
+4. trace log
+5. simulator
 
-The current order is scheduler first, then topology. That is acceptable because
-`scheduler_free` shallow-frees pending events and does not dereference topology
-objects stored inside them.
+The scheduler is freed before topology and the trace log. That is acceptable
+because `scheduler_free` shallow-frees pending events and does not dereference
+topology objects stored inside them, and clearing its trace binding prevents
+access to the log during cleanup.
 
 ### End Time
 
@@ -157,7 +160,7 @@ Field meanings:
 | --- | --- |
 | `topo` | Owned topology pointer. |
 | `sched` | Owned scheduler pointer. |
-| `trace` | Owned persistent simulation trace, or `NULL` when tracing is disabled by construction. |
+| `trace` | Owned, non-null persistent simulation trace. Runtime tracing is controlled by `trace->enabled`. |
 | `end_time` | Stop time. `0` means no limit. |
 | `trace_failed` | Nonzero after an observation could not be stored; network execution still continues. |
 
@@ -166,7 +169,7 @@ Required shape:
 ```text
 topo != NULL
 sched != NULL
-trace is NULL or a valid owned TraceLog
+trace is a non-null valid owned TraceLog
 end_time is any uint64_t
 ```
 
@@ -183,8 +186,8 @@ topology and scheduler.
 
 `simulator_free(NULL)` is valid and does nothing.
 
-`simulator_free` frees the scheduler before the topology in the current
-implementation.
+`simulator_free` clears the scheduler trace binding, then frees scheduler,
+topology, trace, and simulator in that order.
 
 ## Public API
 
@@ -245,9 +248,13 @@ Implementation order:
 - If `sched == NULL`, return `NULL`.
 - Allocate one `Simulator`.
 - If allocation fails, return `NULL`.
-- Store `topo`.
-- Store `sched`.
-- Set `end_time == 0`.
+- Create one enabled trace log with `SIM_TRACE_INITIAL_CAPACITY`.
+- If trace creation fails, free only the new simulator and return `NULL`; the
+  caller still owns `topo` and `sched`.
+- Store `topo`, `sched`, and the new trace.
+- Set `end_time = 0` and `trace_failed = 0`.
+- Call `scheduler_set_trace(sched, trace)` so Scheduler borrows the owned log.
+- Ownership of topology and scheduler transfers only now.
 - Return the simulator.
 
 ### `simulator_free`
@@ -275,8 +282,10 @@ Follow every validation, capacity, ordering, byte-order, and ownership rule in t
 Implementation order:
 
 - If `sim == NULL`, return immediately.
+- Call `scheduler_set_trace(sim->sched, NULL)`.
 - Call `scheduler_free(sim->sched)`.
 - Call `topology_free(sim->topo)`.
+- Call `trace_log_free(sim->trace)`.
 - Free `sim`.
 
 ### `simulator_run`
@@ -525,6 +534,8 @@ Construction and cleanup order:
 
 - Return `-1` for null simulator, trace, or record.
 - Append through `trace_log_append`.
+- When `trace->enabled == 0`, append returns `0`; this is a successful disabled
+  observation and does not set `trace_failed`.
 - If append fails, set `sim->trace_failed = 1` and return `-1`.
 - Otherwise return `0`.
 - Protocol and forwarding operations ignore this return for network semantics;
@@ -545,10 +556,16 @@ simulator_create(topo, sched)
   +-- reject NULL topo or sched
   |
   +-- allocate Simulator
+  +-- create enabled TraceLog
+  |     |
+  |     +-- fail: free Simulator only; caller retains topo and sched
   |
   +-- sim->topo = topo
   +-- sim->sched = sched
+  +-- sim->trace = trace
   +-- sim->end_time = 0
+  +-- sim->trace_failed = 0
+  +-- scheduler_set_trace(sched, trace)
   |
   +-- return Simulator
 ```
@@ -603,7 +620,10 @@ The contracts belong in `simulator.h`.
     predicate simulator_well_formed(Simulator *sim) =
         \valid(sim) &&
         topology_well_formed(sim->topo) &&
-        scheduler_well_formed(sim->sched);
+        scheduler_well_formed(sim->sched) &&
+        trace_log_well_formed(sim->trace) &&
+        sim->sched->trace == sim->trace &&
+        (sim->trace_failed == 0 || sim->trace_failed == 1);
 */
 ```
 
@@ -623,6 +643,9 @@ The contracts belong in `simulator.h`.
         ensures \result == \null || simulator_well_formed(\result);
         ensures \result != \null ==> \result->topo == topo;
         ensures \result != \null ==> \result->sched == sched;
+        ensures \result != \null ==> \result->trace != \null;
+        ensures \result != \null ==> \result->sched->trace == \result->trace;
+        ensures \result != \null ==> \result->trace_failed == 0;
         ensures \result != \null ==> \result->end_time == 0;
 
     complete behaviors;
@@ -640,8 +663,8 @@ Simulator *simulator_create(Topology *topo, Scheduler *sched);
 void simulator_free(Simulator *sim);
 ```
 
-Implementation rule: accept `NULL`; otherwise free scheduler, topology, and
-simulator storage.
+Implementation rule: accept `NULL`; otherwise clear the scheduler's borrowed
+trace binding, then free scheduler, topology, trace, and simulator storage.
 
 ### `simulator_run`
 
@@ -651,7 +674,13 @@ simulator storage.
     assigns sim->sched->eq->events[0 .. sim->sched->eq->capacity - 1],
             sim->sched->eq->count,
             sim->sched->now,
-            sim->sched->running;
+            sim->sched->running,
+            sim->trace->records,
+            sim->trace->records[0 .. sim->trace->capacity - 1],
+            sim->trace->count,
+            sim->trace->capacity,
+            sim->trace->next_sequence,
+            sim->trace_failed;
     ensures \result == 0;
     ensures sim->sched->running == 0;
     ensures simulator_well_formed(sim);
@@ -677,7 +706,13 @@ Additional required proof/test property:
         assumes simulator_well_formed(sim);
         assigns sim->sched->eq->events[0 .. sim->sched->eq->capacity - 1],
                 sim->sched->eq->count,
-                sim->sched->now;
+                sim->sched->now,
+                sim->trace->records,
+                sim->trace->records[0 .. sim->trace->capacity - 1],
+                sim->trace->count,
+                sim->trace->capacity,
+                sim->trace->next_sequence,
+                sim->trace_failed;
         ensures \result == 0 || \result == 1;
         ensures \result == 0 ==> sim->sched->eq->count == \old(sim->sched->eq->count);
         ensures \result == 1 ==> sim->sched->eq->count == \old(sim->sched->eq->count) - 1;
@@ -820,29 +855,33 @@ Minimum KLEVA tests:
 2. `simulator_create(topo, NULL)` returns `NULL`.
 3. Successful create stores topology pointer.
 4. Successful create stores scheduler pointer.
-5. Successful create sets `end_time == 0`.
-6. `simulator_free(NULL)` does not crash.
-7. `simulator_step(NULL)` returns `-1`.
-8. `simulator_step(valid)` delegates to scheduler and preserves scheduler
+5. Successful create owns an enabled empty trace and binds it to scheduler.
+6. Successful create sets `end_time == 0` and `trace_failed == 0`.
+7. Trace allocation failure leaves topology and scheduler caller-owned.
+8. `simulator_free(NULL)` does not crash.
+9. `simulator_free(valid)` clears the borrowed trace binding before freeing
+   scheduler and trace.
+10. `simulator_step(NULL)` returns `-1`.
+11. `simulator_step(valid)` delegates to scheduler and preserves scheduler
    step result.
-9. `simulator_stop(NULL)` does not crash.
-10. `simulator_stop(valid)` sets scheduler running to `0`.
-11. `simulator_set_end_time(NULL, value)` is a no-op.
-12. `simulator_set_end_time(valid, value)` stores the value.
-13. `simulator_now(NULL)` returns `0`.
-14. `simulator_now(valid)` returns scheduler time.
-15. `simulator_inject_packet` rejects NULL simulator, source, destination, or
+12. `simulator_stop(NULL)` does not crash.
+13. `simulator_stop(valid)` sets scheduler running to `0`.
+14. `simulator_set_end_time(NULL, value)` is a no-op.
+15. `simulator_set_end_time(valid, value)` stores the value.
+16. `simulator_now(NULL)` returns `0`.
+17. `simulator_now(valid)` returns scheduler time.
+18. `simulator_inject_packet` rejects NULL simulator, source, destination, or
    packet.
-16. Successful injection increments scheduler queue count.
-17. Successful injection creates `EVT_PACKET_SEND`.
-18. Successful injection stores timestamp `old now + delay_us`.
-19. Successful injection stores exact source, destination, and packet pointers.
-20. `simulator_register_handler` rejects NULL simulator.
-21. `simulator_register_handler` rejects NULL function.
-22. `simulator_register_handler` rejects invalid event type.
-23. Valid register stores function and context in scheduler.
-24. `simulator_run` stops when queue becomes empty.
-25. `simulator_run` stops when end time is reached.
+19. Successful injection increments scheduler queue count.
+20. Successful injection creates `EVT_PACKET_SEND`.
+21. Successful injection stores timestamp `old now + delay_us`.
+22. Successful injection stores exact source, destination, and packet pointers.
+23. `simulator_register_handler` rejects NULL simulator.
+24. `simulator_register_handler` rejects NULL function.
+25. `simulator_register_handler` rejects invalid event type.
+26. Valid register stores function and context in scheduler.
+27. `simulator_run` stops when queue becomes empty.
+28. `simulator_run` stops when end time is reached.
 
 ## Common Mistakes
 

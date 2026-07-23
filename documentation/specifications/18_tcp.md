@@ -1,4 +1,4 @@
-# Module 17 - TCP
+# Module 18 - TCP
 
 **Files:** `src/protocols/tcp.c`, `src/protocols/tcp.h`
 **Status:** Implemented small stop-and-wait TCP

@@ -140,9 +140,7 @@ For implemented modules, the spec should match the current `src/` behavior.
 For future modules, the spec is a design contract. When implementation changes
 the real behavior, update the spec in the same change.
 
-Module numbers are stable catalog identifiers. Phase placement describes the
-architectural layer and implementation prerequisite; it does not require
-numbers inside one phase to be contiguous.
+Module numbers follow architectural dependency and implementation order.
 
 ## Phase 1 - Core Infrastructure
 
@@ -150,56 +148,56 @@ numbers inside one phase to be contiguous.
 | --- | --- | --- | --- |
 | 01 | Packet | [01_packet.md](01_packet.md) | Updated |
 | 02 | Event | [02_event.md](02_event.md) | Updated |
-| 30 | Simulation Trace | [30_trace.md](30_trace.md) | Ready for implementation |
-| 03 | Scheduler | [03_scheduler.md](03_scheduler.md) | Trace retrofit pending |
-| 04 | Interface | [04_interface.md](04_interface.md) | Updated |
-| 05 | Link | [05_link.md](05_link.md) | Updated |
-| 06 | Device | [06_device.md](06_device.md) | Updated |
-| 07 | Topology | [07_topology.md](07_topology.md) | Updated |
-| 08 | Simulator | [08_simulator.md](08_simulator.md) | Trace retrofit pending |
+| 03 | Simulation Trace | [03_trace.md](03_trace.md) | Ready for implementation |
+| 04 | Scheduler | [04_scheduler.md](04_scheduler.md) | Trace retrofit pending |
+| 05 | Interface | [05_interface.md](05_interface.md) | Updated |
+| 06 | Link | [06_link.md](06_link.md) | Updated |
+| 07 | Device | [07_device.md](07_device.md) | Updated |
+| 08 | Topology | [08_topology.md](08_topology.md) | Updated |
+| 09 | Simulator | [09_simulator.md](09_simulator.md) | Trace retrofit pending |
 
 ## Phase 2 - Protocols
 
 | # | Module | Spec | Spec Status |
 | --- | --- | --- | --- |
-| 09 | Ethernet | [09_ethernet.md](09_ethernet.md) | Updated |
-| 10 | ARP Cache | [10_arp_cache.md](10_arp_cache.md) | Updated |
-| 11 | ARP | [11_arp.md](11_arp.md) | Updated |
-| 12 | MAC Table | [12_mac_table.md](12_mac_table.md) | Updated |
-| 13 | Switch | [13_switch.md](13_switch.md) | Updated |
-| 14 | IPv4 | [14_ip.md](14_ip.md) | Updated |
-| 15 | ICMP | [15_icmp.md](15_icmp.md) | Updated |
-| 16 | UDP | [16_udp.md](16_udp.md) | Updated |
-| 17 | TCP | [17_tcp.md](17_tcp.md) | Updated |
-| 18 | Host | [18_host.md](18_host.md) | Updated |
+| 10 | Ethernet | [10_ethernet.md](10_ethernet.md) | Updated |
+| 11 | ARP Cache | [11_arp_cache.md](11_arp_cache.md) | Updated |
+| 12 | ARP | [12_arp.md](12_arp.md) | Updated |
+| 13 | MAC Table | [13_mac_table.md](13_mac_table.md) | Updated |
+| 14 | Switch | [14_switch.md](14_switch.md) | Updated |
+| 15 | IPv4 | [15_ip.md](15_ip.md) | Updated |
+| 16 | ICMP | [16_icmp.md](16_icmp.md) | Updated |
+| 17 | UDP | [17_udp.md](17_udp.md) | Updated |
+| 18 | TCP | [18_tcp.md](18_tcp.md) | Updated |
+| 19 | Host | [19_host.md](19_host.md) | Updated |
 
 ## Phase 3 - Routing
 
 | # | Module | Spec | Spec Status |
 | --- | --- | --- | --- |
-| 19 | Route Table | [19_route_table.md](19_route_table.md) | Updated |
-| 20 | Router | [20_router.md](20_router.md) | Updated |
-| 21 | Static Route | [21_static_route.md](21_static_route.md) | Updated |
-| 22 | RIP | [22_rip.md](22_rip.md) | Updated |
-| 23 | OSPF | [23_ospf.md](23_ospf.md) | Updated |
-| 24 | BGP | [24_bgp.md](24_bgp.md) | Updated |
-| 25 | IS-IS | [25_isis.md](25_isis.md) | Updated |
-| 26 | NAT / PAT | [26_nat.md](26_nat.md) | Updated |
+| 20 | Route Table | [20_route_table.md](20_route_table.md) | Updated |
+| 21 | Router | [21_router.md](21_router.md) | Updated |
+| 22 | Static Route | [22_static_route.md](22_static_route.md) | Updated |
+| 23 | RIP | [23_rip.md](23_rip.md) | Updated |
+| 24 | OSPF | [24_ospf.md](24_ospf.md) | Updated |
+| 25 | BGP | [25_bgp.md](25_bgp.md) | Updated |
+| 26 | IS-IS | [26_isis.md](26_isis.md) | Updated |
+| 27 | NAT / PAT | [27_nat.md](27_nat.md) | Updated |
 
 ## Phase 4 - Display Foundations
 
 | # | Module | Spec | Spec Status |
 | --- | --- | --- | --- |
-| 27 | Topology Display | [27_display_topology.md](27_display_topology.md) | Updated |
-| 28 | Packet Header Display | [28_display_packet.md](28_display_packet.md) | Updated |
-| 31 | Automatic Topology Layout | [31_topology_layout.md](31_topology_layout.md) | Ready for implementation |
-| 32 | Trace Event Log | [32_event_log.md](32_event_log.md) | Ready for implementation |
+| 28 | Topology Display | [28_display_topology.md](28_display_topology.md) | Updated |
+| 29 | Packet Header Display | [29_display_packet.md](29_display_packet.md) | Updated |
+| 30 | Automatic Topology Layout | [30_topology_layout.md](30_topology_layout.md) | Ready for implementation |
+| 31 | Trace Event Log | [31_event_log.md](31_event_log.md) | Ready for implementation |
 
 ## Phase 5 - Runnable Simulator And Animation
 
 | # | Module | Spec | Spec Status |
 | --- | --- | --- | --- |
-| 29 | Topology Configuration | [29_topology_config.md](29_topology_config.md) | Ready for implementation |
+| 32 | Topology Configuration | [32_topology_config.md](32_topology_config.md) | Ready for implementation |
 | 33 | Terminal Animation | [33_animation.md](33_animation.md) | Ready for implementation |
 | 34 | CLI Core | [34_cli.md](34_cli.md) | Ready for implementation |
 | 35 | CLI Built-In Commands | [35_cli_commands.md](35_cli_commands.md) | Ready for implementation |

@@ -1,4 +1,4 @@
-# Module 19 - Route Table
+# Module 20 - Route Table
 
 **Files:** `src/routing/route_table.c`, `src/routing/route_table.h`
 **Status:** Ready for implementation; source files are currently empty

@@ -1,4 +1,4 @@
-# Module 09 - Ethernet
+# Module 10 - Ethernet
 
 **Files:** `src/protocols/ethernet.c`, `src/protocols/ethernet.h`
 **Status:** Implemented

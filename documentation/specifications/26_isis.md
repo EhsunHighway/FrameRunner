@@ -1,4 +1,4 @@
-# Module 25 - IS-IS
+# Module 26 - IS-IS
 
 **Files:** `src/protocols/isis.c`, `src/protocols/isis.h`
 **Status:** Ready for implementation; source files do not exist yet

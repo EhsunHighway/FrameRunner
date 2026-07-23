@@ -1,4 +1,4 @@
-# Module 05 - Link
+# Module 06 - Link
 
 **Files:** `src/network/link.c`, `src/network/link.h`
 **Status:** Implemented

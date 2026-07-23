@@ -1,4 +1,4 @@
-# Module 11 - ARP
+# Module 12 - ARP
 
 **Files:** `src/protocols/arp.c`, `src/protocols/arp.h`
 **Status:** Implemented core ARP exchange
@@ -78,7 +78,7 @@ iface->arp_cache
 ```
 
 ARP updates that borrowed cache pointer. The cache API and pending-packet rules
-are specified in `10_arp_cache.md`.
+are specified in `11_arp_cache.md`.
 
 ### Event Dispatch In Current Code
 

@@ -1,4 +1,4 @@
-# Module 03 - Scheduler
+# Module 04 - Scheduler
 
 **Files:** `src/engine/scheduler.c`, `src/engine/scheduler.h`
 **Status:** Base implemented; trace integration pending
@@ -508,16 +508,25 @@ Initialization and scheduling order:
 5. On insertion failure, restore `event->sequence = 0`, leave
    `next_event_sequence` unchanged, and return `-1`.
 6. On success, advance `next_event_sequence`, skipping zero on wraparound.
-7. When tracing is enabled, append `TRACE_EVENT_SCHEDULED` after successful
-   insertion. Trace append failure does not remove the scheduled event.
+7. When tracing is enabled, initialize `TRACE_EVENT_SCHEDULED` with observation
+   timestamp `s->now`, set result to `TRACE_RESULT_SUCCESS`, and copy the
+   event's type, timestamp, and assigned sequence into `event_type`,
+   `event_timestamp`, and `event_sequence`. Capture its packet when present,
+   then append after successful insertion. Trace append failure does not remove
+   the scheduled event.
 
 Dispatch observation order:
 
 1. Pop the next event and advance `now` exactly as currently specified.
-2. Append `TRACE_EVENT_STARTED` before invoking a handler.
+2. Before invoking a handler, initialize `TRACE_EVENT_STARTED` at `s->now`,
+   preserve result `TRACE_RESULT_NONE`, copy the event type/timestamp/sequence
+   into the three event fields, capture its packet when present, and append.
 3. Invoke the event-specific callback or fallback handler once.
-4. Append `TRACE_EVENT_FINISHED` after the handler returns and before freeing
-   the event.
+4. After the handler returns and before freeing the event, initialize and
+   append `TRACE_EVENT_FINISHED` using the same observation time, none result,
+   and copied event fields. Do not dereference or capture `event->packet` after
+   the handler because the handler may have consumed or freed it; the started
+   record already captured the pre-handler packet view.
 5. Free the event and return `1`.
 
 Scheduler trace records may capture packet identity and visible bytes while the

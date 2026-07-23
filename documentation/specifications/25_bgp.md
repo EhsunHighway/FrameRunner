@@ -1,4 +1,4 @@
-# Module 24 - BGP
+# Module 25 - BGP
 
 **Files:** `src/protocols/bgp.c`, `src/protocols/bgp.h`
 **Status:** Ready for implementation; source files do not exist yet

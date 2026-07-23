@@ -2,7 +2,7 @@
 
 Module numbers preserve the specification catalog and dependency layering; they
 are not a rule that every optional protocol must be completed before the next
-runnable milestone. The current priority is Modules 27–35 plus their listed
+runnable milestone. The current priority is Modules 03 and 28–35 plus their listed
 retrofits. BGP, IS-IS, and NAT/PAT can resume after that milestone. Coverage
 targets remain ≥90% line and ≥80% branch (KLEVA).
 
@@ -20,15 +20,15 @@ Status meanings:
 
 | #  | Module              | File(s)                     | Depends On              | Status          | Tests (line / branch)  |
 |----|---------------------|-----------------------------|-------------------------|-----------------|------------------------|
-|  1 | Packet buffer       | `network/packet.c/h`        | stdlib                  | 🟡 Base implemented; retrofit pending | 93% / 80% ✅ |
-|  2 | Event system        | `engine/event.c/h`          | packet                  | 🟡 Base implemented; retrofit pending | 92% / 81% ✅ |
-| 30 | Simulation trace    | `engine/trace.c/h`          | packet, event           | ⬜ Not started  | —                      |
-|  3 | Scheduler           | `engine/scheduler.c/h`      | event, trace            | 🟡 Base implemented; retrofit pending | 95% / 84% ✅ |
-|  4 | Interface (NIC)     | `network/interface.c/h`     | stdlib                  | ✅ Done         | 98% / 93% ✅           |
-|  5 | Link                | `network/link.c/h`          | interface, packet       | 🟡 Base implemented; retrofit pending | 89% / 80% ⚠️ |
-|  6 | Device              | `network/device.c/h`        | interface, link, packet | 🟡 Base implemented; retrofit pending | 93% / 83% ✅ |
-|  7 | Topology            | `network/topology.c/h`      | device, link            | ✅ Done         | 92% / 83% ✅           |
-|  8 | Simulator           | `engine/simulator.c/h`      | topology, scheduler, trace | 🟡 Base implemented; retrofit pending | 96% / 81% ✅ |
+|  1 | Packet buffer       | `network/packet.c/h`        | stdlib                  | ✅ Done         | 93% / 80% ✅           |
+|  2 | Event system        | `engine/event.c/h`          | packet                  | ✅ Done         | 92% / 81% ✅           |
+|  3 | Simulation trace    | `engine/trace.c/h`          | packet, event           | ✅ Done         | —                      |
+|  4 | Scheduler           | `engine/scheduler.c/h`      | event, trace            | 🟡 Base implemented; retrofit pending | 95% / 84% ✅ |
+|  5 | Interface (NIC)     | `network/interface.c/h`     | stdlib                  | ✅ Done         | 98% / 93% ✅           |
+|  6 | Link                | `network/link.c/h`          | interface, packet       | 🟡 Base implemented; retrofit pending | 89% / 80% ⚠️ |
+|  7 | Device              | `network/device.c/h`        | interface, link, packet | 🟡 Base implemented; retrofit pending | 93% / 83% ✅ |
+|  8 | Topology            | `network/topology.c/h`      | device, link            | ✅ Done         | 92% / 83% ✅           |
+|  9 | Simulator           | `engine/simulator.c/h`      | topology, scheduler, trace | 🟡 Base implemented; retrofit pending | 96% / 81% ✅ |
 
 ---
 
@@ -36,11 +36,11 @@ Status meanings:
 
 | #  | Module              | File(s)                     | Depends On              | Status          | Tests (line / branch)  |
 |----|---------------------|-----------------------------|-------------------------|-----------------|------------------------|
-|  9 | Ethernet (L2)       | `protocols/ethernet.c/h`    | packet, interface       | 🟡 Base implemented; retrofit pending | 57% / 67% ❌ |
-| 10 | ARP cache           | `protocols/arp_cache.c/h`   | interface, packet, ip   | ✅ Done         | —                      |
-| 11 | ARP                 | `protocols/arp.c/h`         | ethernet, arp_cache     | 🟡 Base implemented; retrofit pending | 30% / 38% ❌ |
-| 12 | MAC table           | `network/mac_table.c/h`     | interface               | ✅ Done         | 100% / 100% ✅         |
-| 13 | Switch (L2)         | `network/switch.c/h`        | mac_table, ethernet     | 🟡 Base implemented; retrofit pending | 68% / 56% ❌ |
+| 10 | Ethernet (L2)       | `protocols/ethernet.c/h`    | packet, interface       | 🟡 Base implemented; retrofit pending | 57% / 67% ❌ |
+| 11 | ARP cache           | `protocols/arp_cache.c/h`   | interface, packet, ip   | ✅ Done         | —                      |
+| 12 | ARP                 | `protocols/arp.c/h`         | ethernet, arp_cache     | 🟡 Base implemented; retrofit pending | 30% / 38% ❌ |
+| 13 | MAC table           | `network/mac_table.c/h`     | interface               | ✅ Done         | 100% / 100% ✅         |
+| 14 | Switch (L2)         | `network/switch.c/h`        | mac_table, ethernet     | 🟡 Base implemented; retrofit pending | 68% / 56% ❌ |
 
 ---
 
@@ -48,11 +48,11 @@ Status meanings:
 
 | #  | Module              | File(s)                     | Depends On               | Status          | Tests (line / branch)  |
 |----|---------------------|-----------------------------|--------------------------|-----------------|------------------------|
-| 14 | IPv4                | `protocols/ip.c/h`          | ethernet, arp_cache, arp | 🟡 Base implemented; retrofit pending | 62% / 48% ❌ |
-| 15 | ICMP                | `protocols/icmp.c/h`        | ip                       | 🟡 Base implemented; retrofit pending | 79% / 61% ❌ |
-| 16 | UDP                 | `protocols/udp.c/h`         | ip, icmp                 | 🟡 Base implemented; retrofit pending | 80% / 73% ❌ |
-| 17 | TCP                 | `protocols/tcp.c/h`         | ip                       | 🟡 Base implemented; retrofit pending | — |
-| 18 | Host                | `network/host.c/h`          | device, arp_cache, ip    | 🟡 Base implemented; retrofit pending | — |
+| 15 | IPv4                | `protocols/ip.c/h`          | ethernet, arp_cache, arp | 🟡 Base implemented; retrofit pending | 62% / 48% ❌ |
+| 16 | ICMP                | `protocols/icmp.c/h`        | ip                       | 🟡 Base implemented; retrofit pending | 79% / 61% ❌ |
+| 17 | UDP                 | `protocols/udp.c/h`         | ip, icmp                 | 🟡 Base implemented; retrofit pending | 80% / 73% ❌ |
+| 18 | TCP                 | `protocols/tcp.c/h`         | ip                       | 🟡 Base implemented; retrofit pending | — |
+| 19 | Host                | `network/host.c/h`          | device, arp_cache, ip    | 🟡 Base implemented; retrofit pending | — |
 
 ---
 
@@ -60,14 +60,14 @@ Status meanings:
 
 | #  | Module              | File(s)                     | Depends On                         | Status          | Tests (line / branch)  |
 |----|---------------------|-----------------------------|------------------------------------|-----------------|------------------------|
-| 19 | Routing table       | `routing/route_table.c/h`   | device, ip                         | ✅ Done         | —                      |
-| 20 | Router (L3)         | `network/router.c/h`        | device, arp_cache, route_table, ip | 🟡 Base implemented; retrofit pending | — |
-| 21 | Static Route        | `routing/static_route.c/h`  | route_table, router, interface     | ✅ Done         | —                      |
-| 22 | RIP                 | `protocols/rip.c/h`         | route_table, router, scheduler     | 🟡 Base implemented; retrofit pending | — |
-| 23 | OSPF                | `protocols/ospf.c/h`        | route_table, router, scheduler     | 🟡 Base implemented; retrofit pending | — |
-| 24 | BGP                 | `protocols/bgp.c/h`         | route_table, router, scheduler     | ⬜ Not started  | —                      |
-| 25 | IS-IS               | `protocols/isis.c/h`        | route_table, router, scheduler     | ⬜ Not started  | —                      |
-| 26 | NAT / PAT           | `protocols/nat.c/h`         | route_table, ip                    | ⬜ Not started  | —                      |
+| 20 | Routing table       | `routing/route_table.c/h`   | device, ip                         | ✅ Done         | —                      |
+| 21 | Router (L3)         | `network/router.c/h`        | device, arp_cache, route_table, ip | 🟡 Base implemented; retrofit pending | — |
+| 22 | Static Route        | `routing/static_route.c/h`  | route_table, router, interface     | ✅ Done         | —                      |
+| 23 | RIP                 | `protocols/rip.c/h`         | route_table, router, scheduler     | 🟡 Base implemented; retrofit pending | — |
+| 24 | OSPF                | `protocols/ospf.c/h`        | route_table, router, scheduler     | 🟡 Base implemented; retrofit pending | — |
+| 25 | BGP                 | `protocols/bgp.c/h`         | route_table, router, scheduler     | ⬜ Not started  | —                      |
+| 26 | IS-IS               | `protocols/isis.c/h`        | route_table, router, scheduler     | ⬜ Not started  | —                      |
+| 27 | NAT / PAT           | `protocols/nat.c/h`         | route_table, ip                    | ⬜ Not started  | —                      |
 
 ---
 
@@ -75,10 +75,10 @@ Status meanings:
 
 | #  | Module              | File(s)                              | Depends On           | Status          | Tests (line / branch)  |
 |----|---------------------|--------------------------------------|----------------------|-----------------|------------------------|
-| 27 | Topology report     | `display/topology_view.c/h`          | topology             | ⬜ Not started  | —                      |
-| 28 | Packet header view  | `display/header_view.c/h`            | packet, protocols    | ⬜ Not started  | —                      |
-| 31 | Automatic topology layout | `display/topology_layout.c/h`  | topology, device, link | ⬜ Not started | —                     |
-| 32 | Trace event-log renderer | `display/event_log.c/h`         | trace                | ⬜ Empty files | —                     |
+| 28 | Topology report     | `display/topology_view.c/h`          | topology             | ⬜ Not started  | —                      |
+| 29 | Packet header view  | `display/header_view.c/h`            | packet, protocols    | ⬜ Not started  | —                      |
+| 30 | Automatic topology layout | `display/topology_layout.c/h`  | topology, device, link | ⬜ Not started | —                     |
+| 31 | Trace event-log renderer | `display/event_log.c/h`         | trace                | ⬜ Empty files | —                     |
 
 ## Phase 6 — Runnable Simulator + Animation
 
@@ -88,7 +88,7 @@ end-to-end.
 
 | #  | Module                    | File(s)                              | Depends On                    | Status          | Tests (line / branch) |
 |----|---------------------------|--------------------------------------|-------------------------------|-----------------|-----------------------|
-| 29 | Topology configuration    | `config/topology_config.c/h`         | simulator, topology, devices  | ⬜ Not started  | —                     |
+| 32 | Topology configuration    | `config/topology_config.c/h`         | simulator, topology, devices  | ⬜ Not started  | —                     |
 | 33 | Terminal animation        | `display/animation.c/h`              | trace, topology_layout, topology_view, header_view, event_log | ⬜ Not started | — |
 | 34 | CLI core / REPL           | `cli/cli.c/h`                        | simulator, animation          | ⬜ Empty files | — |
 | 35 | CLI built-in commands     | `cli/commands.c/h`                   | cli, topology_config, simulator, animation, topology_view, event_log, device, link, route_table, icmp | ⬜ Empty files | — |
@@ -102,10 +102,10 @@ module specifications; this does not reopen unrelated protocol behavior.
 | Area | Specifications | Required integration |
 |---|---|---|
 | Packet and event identity | 01, 02 | Packet lineage and deterministic event sequence |
-| Scheduler and simulator | 03, 08 | Own the trace log and emit scheduled/start/finish records |
-| Network movement | 05, 06 | Device type and link departure/arrival trace records |
-| Layer 2 and Layer 3 | 09, 11, 13, 14, 15, 18, 20 | Record semantic receive, decision, send, drop, and delivery actions |
-| Transport and routing | 16, 17, 22, 23 | Record state changes, control traffic, route changes, and timers |
+| Scheduler and simulator | 04, 09 | Own the trace log and emit scheduled/start/finish records |
+| Network movement | 06, 07 | Device type and link departure/arrival trace records |
+| Layer 2 and Layer 3 | 10, 12, 14, 15, 16, 19, 21 | Record semantic receive, decision, send, drop, and delivery actions |
+| Transport and routing | 17, 18, 23, 24 | Record state changes, control traffic, route changes, and timers |
 
 ### Phase 6 Acceptance Scenario
 

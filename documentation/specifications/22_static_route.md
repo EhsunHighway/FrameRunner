@@ -1,4 +1,4 @@
-# Module 21 - Static Route
+# Module 22 - Static Route
 
 **Files:** `src/routing/static_route.c`, `src/routing/static_route.h`
 **Depends on:** `router`, `route_table`, `interface`, `ip_utils`

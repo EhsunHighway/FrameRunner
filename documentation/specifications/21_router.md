@@ -1,4 +1,4 @@
-# Module 20 - Router
+# Module 21 - Router
 
 **Files:** `src/network/router.c`, `src/network/router.h`
 **Status:** Ready for implementation; current source files are stubs

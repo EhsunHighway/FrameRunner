@@ -1,4 +1,4 @@
-# Module 06 - Device
+# Module 07 - Device
 
 **Files:** `src/network/device.c`, `src/network/device.h`
 **Status:** Implemented

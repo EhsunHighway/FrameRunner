@@ -1,4 +1,4 @@
-# Module 26 - NAT
+# Module 27 - NAT
 
 **Files:** `src/protocols/nat.c`, `src/protocols/nat.h`
 **Status:** Ready for implementation; source files do not exist yet

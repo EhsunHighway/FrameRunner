@@ -1,4 +1,4 @@
-# Module 28 - Display Packet Headers
+# Module 29 - Display Packet Headers
 
 **Files:** `src/display/header_view.c`, `src/display/header_view.h`
 **Status:** Ready for implementation; current source files are empty

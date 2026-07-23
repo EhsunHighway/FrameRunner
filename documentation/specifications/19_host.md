@@ -1,4 +1,4 @@
-# Module 18 - Host
+# Module 19 - Host
 
 **Files:** `src/network/host.c`, `src/network/host.h`
 **Status:** Implemented endpoint composition module

@@ -1,4 +1,4 @@
-# Module 23 - OSPF
+# Module 24 - OSPF
 
 **Files:** `src/protocols/ospf.c`, `src/protocols/ospf.h`
 **Depends on:** `router`, `route_table`, `ip`, `packet`, `interface`,

@@ -1,4 +1,4 @@
-# Module 04 - Interface
+# Module 05 - Interface
 
 **Files:** `src/network/interface.c`, `src/network/interface.h`
 **Status:** Implemented

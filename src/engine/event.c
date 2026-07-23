@@ -19,6 +19,7 @@ Event      *event_create_callback(EventType     type,
 
     e->type        = type;
     e->timestamp   = timestamp;
+    e->sequence    = 0;
     e->src_device  = src;
     e->dst_device  = dst;
     e->packet      = packet;
@@ -82,8 +83,8 @@ void        event_queue_free(EventQueue *eq) {
 
 int         event_queue_push(EventQueue *eq, Event *e) {
     if (eq->count >= eq->capacity) {
-        size_t  new_capacity      = eq->capacity * 2;
-        Event **new_events        = realloc(eq->events, sizeof(Event *) * new_capacity);
+        size_t  new_capacity = eq->capacity * 2;
+        Event **new_events   = realloc(eq->events, sizeof(Event *) * new_capacity);
         if (!new_events) {
             return -1;
         }
@@ -91,13 +92,20 @@ int         event_queue_push(EventQueue *eq, Event *e) {
         eq->capacity = new_capacity;
     }
 
-    int i = eq->count - 1;
-    while (i >= 0 && eq->events[i]->timestamp > e->timestamp) {
-        eq->events[i + 1] = eq->events[i];
-        i--;
+    size_t insertion_index = eq->count;
+    while (insertion_index > 0) {
+        Event *previous = eq->events[insertion_index - 1];
+        if (previous->timestamp < e->timestamp   ||
+            (previous->timestamp == e->timestamp &&
+             previous->sequence  <= e->sequence)) {
+            break;
+        }
+
+        eq->events[insertion_index] = previous;
+        insertion_index--;
     }
 
-    eq->events[i + 1] = e;
+    eq->events[insertion_index] = e;
     eq->count++;
     return 0;
 }

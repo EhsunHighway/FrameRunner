@@ -1,4 +1,4 @@
-# Module 31 - Automatic Topology Layout
+# Module 30 - Automatic Topology Layout
 
 **Files:** `src/display/topology_layout.c`, `src/display/topology_layout.h`
 **Status:** Ready for implementation; files do not exist yet

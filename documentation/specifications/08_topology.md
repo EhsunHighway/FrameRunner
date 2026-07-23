@@ -1,4 +1,4 @@
-# Module 07 - Topology
+# Module 08 - Topology
 
 **Files:** `src/network/topology.c`, `src/network/topology.h`
 **Status:** Implemented

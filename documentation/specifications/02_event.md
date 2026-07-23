@@ -104,17 +104,20 @@ earliest event.
 
 This is `O(n)`, but simple and deterministic for this simulator.
 
-### Tie Order
+### Equal-Time Order
 
-When two events have the same timestamp, insertion order is preserved.
+The scheduler assigns each successfully scheduled event a nonzero `sequence`.
+The queue orders events using the pair `(timestamp, sequence)`:
 
-The implementation shifts only events with a strictly greater timestamp:
-
-```c
-eq->events[i]->timestamp > e->timestamp
+```text
+lower timestamp first
+equal timestamp -> lower sequence first
 ```
 
-Equal timestamps are not shifted past each other.
+The sequence records scheduling order explicitly. If two directly constructed
+test events have equal timestamps and equal sequences, insertion order is
+preserved because the queue does not shift an entry whose complete ordering
+pair equals the new event's pair.
 
 ## Purpose
 
@@ -240,7 +243,8 @@ The queue invariant is:
 
 ```text
 0 <= count <= capacity
-events[0 .. count - 1] are sorted by nondecreasing timestamp
+every queued event has sequence != 0
+events[0 .. count - 1] are sorted by nondecreasing (timestamp, sequence)
 ```
 
 ## Ownership And Lifetime
@@ -331,7 +335,10 @@ Implementation order:
 
 - Allocate one `Event`.
 - If allocation fails, return `NULL`.
-- Store all arguments directly into the new event.
+- Store `type`, `timestamp`, `src`, `dst`, `packet`, `data`, `handler`, and
+  `handler_ctx` in their corresponding fields.
+- Set `sequence == 0` because the event has been created but has not yet been
+  accepted by a scheduler.
 - Return the new event.
 
 The event module does not validate whether `type` is a known enum value.
@@ -360,9 +367,10 @@ Follow every validation, capacity, ordering, byte-order, and ownership rule in t
 
 Implementation order:
 
-- Create an event with the same fields as `event_create_callback`.
-- Set `handler == NULL`.
-- Set `handler_ctx == NULL`.
+- Call `event_create_callback` with all supplied arguments, `handler == NULL`,
+  and `handler_ctx == NULL`.
+- Return the result without modifying it. A successful result already has
+  `sequence == 0` because `event_create_callback` initializes it.
 
 This function exists for callers that want type-based scheduler dispatch instead
 of a per-event callback.
@@ -487,11 +495,21 @@ Implementation order:
 
 - Caller must pass a valid queue.
 - Caller must pass a valid event.
+- Caller must pass an event whose `sequence` is nonzero. Production callers
+  satisfy this by using `scheduler_schedule`; direct queue tests assign a
+  nonzero sequence explicitly.
 - If `count >= capacity`, grow the `events` array with `realloc`.
 - Growth doubles the previous capacity.
 - If growth fails, return `-1` and leave `count` unchanged.
-- Insert the new event so timestamps remain sorted in nondecreasing order.
-- Preserve insertion order for events with equal timestamps.
+- Set `insertion_index = count`.
+- While `insertion_index > 0`, let `previous` refer to
+  `events[insertion_index - 1]`.
+- Stop the backward scan when `previous->timestamp < e->timestamp`.
+- Also stop when the timestamps are equal and
+  `previous->sequence <= e->sequence`.
+- Otherwise move `previous` one slot to the right and decrement
+  `insertion_index`.
+- Store `e` in `events[insertion_index]`.
 - Increment `count`.
 - Return `0`.
 
@@ -593,8 +611,9 @@ Implementation order:
 ## Stable Equal-Time Ordering And Trace Integration
 
 `event_create` and `event_create_callback` initialize `sequence = 0`. Event
-creation does not decide queue order. `scheduler_schedule` assigns a nonzero
-sequence only as part of successful insertion.
+creation does not decide queue order. `scheduler_schedule` assigns a candidate
+nonzero sequence before insertion, keeps it when insertion succeeds, and
+restores zero when insertion fails.
 
 `event_queue_push` orders events by the pair:
 
@@ -603,17 +622,19 @@ sequence only as part of successful insertion.
 ```
 
 Lower timestamps come first. Equal timestamps use lower sequence first. An
-event with `sequence == 0` is not valid for direct queue insertion after the
-scheduler integration is implemented; callers schedule through
-`scheduler_schedule`.
+event with `sequence == 0` is not valid for queue insertion. Production callers
+schedule through `scheduler_schedule`; a unit test that calls
+`event_queue_push` directly must assign a nonzero sequence first.
 
 The sequence is displayable diagnostic state, not simulated time. It ensures
 that `step`, same-time animation `tick`, logs, and deterministic replay all
 observe the same order.
 
-Trace records copy event type, timestamp, and sequence. A trace record must not
-retain an `Event *`, because `scheduler_step` frees the event immediately after
-dispatch.
+Trace records copy event type, timestamp, and sequence into the distinct
+`event_type`, `event_timestamp`, and `event_sequence` fields. The trace log
+assigns its own `TraceRecord.sequence`; it never overwrites the copied event
+sequence. A trace record must not retain an `Event *`, because `scheduler_step`
+frees the event immediately after dispatch.
 
 ## Flow Charts
 
@@ -625,12 +646,15 @@ link computes arrival timestamp
   +-- event_create_callback(...)
   |     |
   |     +-- event stores timestamp, packet, dst interface, handler, context
+  |     +-- event sequence starts at zero
   |
   +-- scheduler_schedule(...)
         |
+        +-- assign candidate event sequence
+        |
         +-- event_queue_push(...)
               |
-              +-- insert by timestamp
+              +-- insert by (timestamp, sequence)
 ```
 
 ### Scheduler Pulls The Next Event
@@ -663,9 +687,10 @@ event_queue_push(eq, e)
   |     +-- realloc to double capacity
   |     +-- fail: return -1
   |
-  +-- scan backward while existing timestamp > new timestamp
+  +-- scan backward while the existing (timestamp, sequence)
+  |   pair is greater than the new event's pair
   |
-  +-- shift greater timestamps right
+  +-- shift greater ordering pairs right
   |
   +-- place new event
   |
@@ -698,12 +723,15 @@ properties are queue shape, sortedness, count changes, and shallow ownership.
         event_queue_storage(eq) &&
         (\forall integer i, j;
             0 <= i && i <= j && j < eq->count ==>
-                eq->events[i]->timestamp <= eq->events[j]->timestamp);
+                (eq->events[i]->timestamp < eq->events[j]->timestamp ||
+                 (eq->events[i]->timestamp == eq->events[j]->timestamp &&
+                  eq->events[i]->sequence <= eq->events[j]->sequence)));
 
     predicate event_queue_entries_valid(EventQueue *eq) =
         event_queue_storage(eq) &&
         (\forall integer i;
-            0 <= i && i < eq->count ==> \valid(eq->events[i]));
+            0 <= i && i < eq->count ==>
+                \valid(eq->events[i]) && eq->events[i]->sequence != 0);
 
     predicate event_queue_well_formed(EventQueue *eq) =
         event_queue_sorted(eq) && event_queue_entries_valid(eq);
@@ -742,6 +770,7 @@ events.
 /*@
     requires event_queue_well_formed(eq);
     requires \valid(e);
+    requires e->sequence != 0;
     assigns eq->events, eq->events[0 .. eq->capacity - 1],
             eq->count, eq->capacity;
     ensures \result == 0 || \result == -1;
@@ -756,8 +785,10 @@ int event_queue_push(EventQueue *eq, Event *e);
 
 Additional required proof/test property:
 
-- If two events have equal timestamps, their relative insertion order is
-  preserved.
+- If two events have equal timestamps, the one with the lower sequence appears
+  first even when it is pushed second.
+- If two events have equal timestamps and equal sequences in a focused queue
+  ordering test, their relative insertion order is preserved.
 - If `realloc` fails, the old `events` pointer remains the queue storage.
 
 ### `event_queue_pop`
@@ -808,6 +839,7 @@ int event_queue_is_empty(const EventQueue *eq);
     ensures \result == \null || \valid(\result);
     ensures \result != \null ==> \result->type == type;
     ensures \result != \null ==> \result->timestamp == timestamp;
+    ensures \result != \null ==> \result->sequence == 0;
     ensures \result != \null ==> \result->src_device == src;
     ensures \result != \null ==> \result->dst_device == dst;
     ensures \result != \null ==> \result->packet == packet;
@@ -831,6 +863,7 @@ Event *event_create(EventType type,
     ensures \result == \null || \valid(\result);
     ensures \result != \null ==> \result->type == type;
     ensures \result != \null ==> \result->timestamp == timestamp;
+    ensures \result != \null ==> \result->sequence == 0;
     ensures \result != \null ==> \result->src_device == src;
     ensures \result != \null ==> \result->dst_device == dst;
     ensures \result != \null ==> \result->packet == packet;
@@ -864,26 +897,31 @@ stored in the event.
 
 Minimum KLEVA tests:
 
-1. `event_create` returns either `NULL` or an event with all fields copied.
-2. `event_create` sets `handler == NULL`.
-3. `event_create` sets `handler_ctx == NULL`.
-4. `event_create_callback` preserves `handler`.
-5. `event_create_callback` preserves `handler_ctx`.
-6. `event_free(NULL)` does not crash.
-7. `event_queue_create(1)` returns either `NULL` or a queue with `count == 0`.
-8. Created queue capacity equals requested capacity.
-9. Push into empty queue succeeds and increments count.
-10. Push keeps timestamps sorted.
-11. Push preserves equal-timestamp insertion order.
-12. Push grows a full queue.
-13. Push failure from `realloc` leaves `count` unchanged.
-14. Pop from empty queue returns `NULL` and leaves count unchanged.
-15. Pop from non-empty queue returns the earliest event.
-16. Pop decrements count by one.
-17. Peek from empty queue returns `NULL`.
-18. Peek from non-empty queue returns earliest event without changing count.
-19. `event_queue_is_empty` returns `1` exactly when `count == 0`.
-20. `event_queue_free(NULL)` does not crash.
+1. `event_create` returns either `NULL` or an event with all supplied fields
+   copied.
+2. `event_create` sets `sequence == 0`.
+3. `event_create` sets `handler == NULL`.
+4. `event_create` sets `handler_ctx == NULL`.
+5. `event_create_callback` preserves `handler`.
+6. `event_create_callback` preserves `handler_ctx` and sets `sequence == 0`.
+7. `event_free(NULL)` does not crash.
+8. `event_queue_create(1)` returns either `NULL` or a queue with `count == 0`.
+9. Created queue capacity equals requested capacity.
+10. Push of an event with a nonzero sequence into an empty queue succeeds and
+    increments count.
+11. Push keeps events sorted by timestamp.
+12. For equal timestamps, push orders the lower sequence first even when that
+    event is pushed second.
+13. Push preserves insertion order when both timestamp and sequence are equal.
+14. Push grows a full queue.
+15. Push failure from `realloc` leaves `count` unchanged.
+16. Pop from empty queue returns `NULL` and leaves count unchanged.
+17. Pop from non-empty queue returns the earliest `(timestamp, sequence)` pair.
+18. Pop decrements count by one.
+19. Peek from empty queue returns `NULL`.
+20. Peek from non-empty queue returns earliest event without changing count.
+21. `event_queue_is_empty` returns `1` exactly when `count == 0`.
+22. `event_queue_free(NULL)` does not crash.
 
 ## Common Mistakes
 
@@ -892,6 +930,11 @@ Minimum KLEVA tests:
 - Do not assume `EventType` alone is enough for owner-specific timers.
 - Do not make `event.h` include packet, interface, TCP, RIP, or scheduler
   headers just to type the opaque pointers.
-- Do not break FIFO order for equal timestamps.
+- Do not leave `sequence` uninitialized after event creation; zero is the
+  explicit not-yet-scheduled value.
+- Do not assign an event sequence inside `event_queue_push`; the scheduler owns
+  sequence assignment.
+- Do not order equal-time events by pointer value or implicit array position;
+  use their scheduler-assigned sequences.
 - Do not make `event_queue_free` silently free events unless every caller is
   updated to transfer ownership to the queue.

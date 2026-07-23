@@ -1,4 +1,4 @@
-# Module 10 - ARP Cache
+# Module 11 - ARP Cache
 
 **Files:** `src/protocols/arp_cache.c`, `src/protocols/arp_cache.h`
 **Status:** Implemented core cache and pending queue

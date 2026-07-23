@@ -5,8 +5,11 @@
 #include "packet.h"
 
 
-
 Packet *packet_create(size_t capacity) {
+    if (capacity > SIZE_MAX - PKT_HEADROOM) {
+        return NULL;
+    }
+
     Packet *p = malloc(sizeof(Packet));
     if (!p) {
         return NULL;
@@ -23,7 +26,9 @@ Packet *packet_create(size_t capacity) {
     p->capacity             = capacity;
     p->layer                = 0;
     static uint32_t next_id = 1;
-    p->id = next_id++;
+    p->id                   = next_id++;
+    p->trace_id             = p->id;
+    p->parent_id            = 0;
 
     return p;
 }
@@ -104,6 +109,11 @@ Packet *packet_clone(const Packet *p) {
     memcpy(clone->data, p->data, p->len);
     clone->len   = p->len;
     clone->layer = p->layer;
+    int res = packet_inherit_trace(clone, p);
+    if (res < 0) {
+        packet_free(clone);
+        return NULL;
+    }
     return clone;
 }
 
@@ -140,4 +150,15 @@ void packet_dump(const Packet *p) {
         }
     }
     printf("\n");
+}
+
+int packet_inherit_trace(Packet *child, const Packet *parent) {
+    if (!child || !parent) {
+        return -1;
+    }
+
+    child->trace_id  = parent->trace_id;
+    child->parent_id = parent->id;
+
+    return 0;
 }

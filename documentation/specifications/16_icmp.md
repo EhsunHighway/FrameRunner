@@ -1,4 +1,4 @@
-# Module 15 - ICMP
+# Module 16 - ICMP
 
 **Files:** `src/protocols/icmp.c`, `src/protocols/icmp.h`
 **Status:** Implemented core echo and error-message helpers
